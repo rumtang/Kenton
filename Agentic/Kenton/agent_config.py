@@ -19,8 +19,8 @@ def get_agent(model="o3-responses"):
     - Tools for research capabilities
     """
     # Build tools list based on model capabilities
-    if model in ["o3", "o4-mini", "o3-mini"]:
-        # o3 models support function tools
+    if model in ["o3", "o4-mini", "o3-mini", "o3o", "gpt-4.1", "gpt-4.1-mini"]:
+        # o3 and 4.1 models support function tools
         tools = [
             summarize,
             compare_sources,
@@ -116,8 +116,8 @@ Your job is to be the advisor who sees around corners and translates complexity 
         # Configure model settings based on model type
         model_settings=ModelSettings(
             max_tokens=16384,  # Large token limit for comprehensive responses
-            temperature=0.3 if model not in ["o3", "o4-mini", "o3-mini"] else None,  # o3 models ignore temperature
-            top_p=0.9 if model not in ["o3", "o4-mini", "o3-mini"] else None  # o3 models ignore top_p
+            temperature=0.3 if model not in ["o3", "o4-mini", "o3-mini", "o3o", "gpt-4.1", "gpt-4.1-mini"] else None,  # o3 and 4.1 models ignore temperature
+            top_p=0.9 if model not in ["o3", "o4-mini", "o3-mini", "o3o", "gpt-4.1", "gpt-4.1-mini"] else None  # o3 and 4.1 models ignore top_p
         ),
         # Include all research tools
         tools=tools
