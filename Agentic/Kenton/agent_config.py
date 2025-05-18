@@ -4,32 +4,42 @@ from agents import Agent, ModelSettings, WebSearchTool
 from tools.summarize import summarize
 from tools.compare_sources import compare_sources
 from tools.report_generator import generate_report
-from tools.vector_search import get_file_search_tool
+from tools.file_search import file_search
 from dotenv import load_dotenv
 import os
 
 # Load environment variables from .env file
 load_dotenv()
 
-def get_agent():
+def get_agent(model="o3-responses"):
     """
     Returns a configured Deep Research agent with:
     - Research-focused instructions
     - Model settings for consistency
     - Tools for research capabilities
     """
-    # Build tools list
-    tools = [
-        WebSearchTool(),
-        summarize,
-        compare_sources,
-        generate_report
-    ]
-    
-    # Add FileSearchTool if vector store ID is configured
-    file_search_tool = get_file_search_tool()
-    if file_search_tool:
-        tools.append(file_search_tool)
+    # Build tools list based on model capabilities
+    if model in ["o3", "o4-mini", "o3-mini"]:
+        # o3 models support function tools
+        tools = [
+            summarize,
+            compare_sources,
+            generate_report,
+            file_search  # Add file search as function tool
+        ]
+    else:
+        tools = [
+            WebSearchTool(),
+            summarize,
+            compare_sources,
+            generate_report
+        ]
+        
+        # Add FileSearchTool if vector store ID is configured (for non-o3 models)
+        from tools.vector_search import get_file_search_tool
+        file_search_tool = get_file_search_tool()
+        if file_search_tool:
+            tools.append(file_search_tool)
     
     return Agent(
         name="DeepResearcher",
@@ -38,6 +48,9 @@ You are a strategic advisor who helps business executives understand how technol
 
 CORE MISSION:
 Help executives answer: "So what does this mean for MY business?"
+
+DOCUMENT ACCESS:
+Use the file_search tool to access internal documents and reports when queries require specific company information or proprietary data. Always cite your sources using the provided citation format when referencing documents.
 
 YOUR ANALYTICAL FRAMEWORK:
 1. Impact on competitive dynamics
@@ -98,13 +111,13 @@ Executives need to know:
 
 Your job is to be the advisor who sees around corners and translates complexity into strategic clarity.
         """,
-        # Using GPT-4.1 for optimal reasoning and web search support
-        model="gpt-4.1",
-        # Configure model settings for executive-level analysis
+        # Using specified model
+        model=model,
+        # Configure model settings based on model type
         model_settings=ModelSettings(
-            temperature=0.3,  # Balanced for insight and accuracy
-            top_p=0.9,
-            max_tokens=8192
+            max_tokens=16384,  # Large token limit for comprehensive responses
+            temperature=0.3 if model not in ["o3", "o4-mini", "o3-mini"] else None,  # o3 models ignore temperature
+            top_p=0.9 if model not in ["o3", "o4-mini", "o3-mini"] else None  # o3 models ignore top_p
         ),
         # Include all research tools
         tools=tools
