@@ -5,6 +5,7 @@ from tools.summarize import summarize
 from tools.compare_sources import compare_sources
 from tools.report_generator import generate_report
 from tools.file_search import file_search
+from tools.mcp_api_loader import APIManager
 from dotenv import load_dotenv
 import os
 
@@ -40,6 +41,19 @@ def get_agent(model="o3-responses"):
         file_search_tool = get_file_search_tool()
         if file_search_tool:
             tools.append(file_search_tool)
+    
+    # Load MCP API tools if available
+    try:
+        mcp_path = os.getenv("MCP_CONFIG_PATH", "./consulting_brain_apis.mcp")
+        if os.path.exists(mcp_path):
+            api_manager = APIManager(mcp_path)
+            mcp_tools = api_manager.get_tools()
+            # Add MCP tools as function tools
+            for tool in mcp_tools:
+                tools.append(tool["function"])
+            print(f"Loaded {len(mcp_tools)} API tools from {mcp_path}")
+    except Exception as e:
+        print(f"Failed to load MCP tools: {e}")
     
     return Agent(
         name="DeepResearcher",
