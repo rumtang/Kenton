@@ -39,7 +39,7 @@ def create_api_tool(name: str, endpoint: str, api_key: str = None,
         name: API name
         endpoint: API endpoint URL
         api_key: API key for authentication
-        auth_type: Authentication type (Bearer, API-Key, etc.)
+        auth_type: Authentication type (Bearer, API-Key, Query-Key, etc.)
         description: Tool description
     
     Returns:
@@ -48,19 +48,25 @@ def create_api_tool(name: str, endpoint: str, api_key: str = None,
     def api_tool_function(**kwargs) -> Dict[str, Any]:
         """Make API request with provided parameters."""
         headers = {}
+        query_params = kwargs.copy()
         
-        # Add authentication header if API key is provided
+        # Handle authentication based on type
         if api_key:
             if auth_type.lower() == "bearer":
                 headers["Authorization"] = f"Bearer {api_key}"
             elif auth_type.lower() == "api-key":
                 headers["X-API-Key"] = api_key
+            elif auth_type.lower() == "query-key":
+                # For APIs that expect key as query parameter (like weatherapi.com)
+                query_params["key"] = api_key
+            elif auth_type.lower() == "x-rapidapi-key":
+                headers["X-RapidAPI-Key"] = api_key
             else:
                 headers["Authorization"] = f"{auth_type} {api_key}"
         
         try:
             logger.info(f"[{name}] Making request to {endpoint}")
-            response = requests.get(endpoint, headers=headers, params=kwargs, timeout=30)
+            response = requests.get(endpoint, headers=headers, params=query_params, timeout=30)
             response.raise_for_status()
             
             # Try to parse as JSON
