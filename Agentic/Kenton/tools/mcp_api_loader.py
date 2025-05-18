@@ -59,8 +59,19 @@ def create_api_tool(name: str, endpoint: str, api_key: str = None,
             elif auth_type.lower() == "query-key":
                 # For APIs that expect key as query parameter (like weatherapi.com)
                 query_params["key"] = api_key
+            elif auth_type.lower() == "query-param-apikey":
+                # For APIs expecting 'apikey' parameter (like FMP)
+                query_params["apikey"] = api_key
+            elif auth_type.lower() == "query-param-api_key":
+                # For APIs expecting 'api_key' parameter (like FRED)
+                query_params["api_key"] = api_key
             elif auth_type.lower() == "x-rapidapi-key":
                 headers["X-RapidAPI-Key"] = api_key
+                # RapidAPI also needs the host header
+                if "rapidapi.com" in endpoint:
+                    import urllib.parse
+                    parsed_url = urllib.parse.urlparse(endpoint)
+                    headers["X-RapidAPI-Host"] = parsed_url.netloc
             else:
                 headers["Authorization"] = f"{auth_type} {api_key}"
         

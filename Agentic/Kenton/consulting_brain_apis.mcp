@@ -13,7 +13,7 @@ description = News API for retrieving articles from various sources
 name = Weather API
 endpoint = https://api.weatherapi.com/v1/current.json
 auth = WEATHER_API_KEY
-auth_type = API-Key
+auth_type = Query-Key
 use_cases = Get current weather conditions for any location
 description = Weather API for current conditions and forecasts
 
@@ -27,9 +27,9 @@ description = API for company data, financials, and profiles
 
 [MarketDataAPI]
 name = Market Data API
-endpoint = https://api.marketdata.com/v1/quotes
+endpoint = https://financialmodelingprep.com/api/v3/quote/AAPL
 auth = MARKET_DATA_KEY
-auth_type = Bearer
+auth_type = Query-Param-apikey
 use_cases = Get real-time stock market data and financial indicators
 description = Financial market data API for stocks, currencies, and commodities
 
@@ -40,3 +40,51 @@ auth = INDUSTRY_REPORTS_KEY
 auth_type = API-Key
 use_cases = Access industry analysis reports and market research
 description = Comprehensive industry reports and market analysis data
+
+[YahooFinanceAPI]
+name = Yahoo Finance API
+endpoint = https://yh-finance.p.rapidapi.com/stock/v2/get-summary
+auth = YAHOO_FINANCE_KEY
+auth_type = X-RapidAPI-Key
+use_cases = Pull financial summaries, valuation data, and market info
+description = Provides real-time market fundamentals and company summaries from Yahoo Finance
+
+[WorldBankAPI]
+name = World Bank API
+endpoint = https://api.worldbank.org/v2/country/{country}/indicator/{indicator}?format=json
+auth = NONE
+auth_type = None
+use_cases = Track global economic development indicators like GDP, inflation, education
+description = Free macroeconomic and development data from the World Bank for 200+ countries
+
+[FredAPI]
+name = FRED API
+endpoint = https://api.stlouisfed.org/fred/series/observations
+auth = FRED_KEY
+auth_type = Query-Param-api_key
+use_cases = Pull time series on inflation, interest rates, and employment trends
+description = Federal Reserve Economic Data (FRED) API for U.S. macroeconomic indicators
+
+[SECFilingsAPI]
+name = SEC EDGAR Filings API
+endpoint = https://data.sec.gov/submissions/CIK{cik}.json
+auth = SEC_USER_AGENT
+auth_type = Header
+use_cases = Retrieve company filings like 10-Ks, 10-Qs, and ownership data
+description = U.S. Securities and Exchange Commission filings retrieval API
+
+[GDELTAPI]
+name = GDELT Global News API
+endpoint = https://api.gdeltproject.org/api/v2/doc/doc
+auth = NONE
+auth_type = None
+use_cases = Monitor world news trends, sentiment, and breaking events
+description = Global news and event monitoring API covering over 100 languages
+
+[SemanticScholarAPI]
+name = Semantic Scholar API
+endpoint = https://api.semanticscholar.org/graph/v1/paper/search
+auth = SEMANTIC_SCHOLAR_KEY
+auth_type = API-Key
+use_cases = Search scientific papers by topic, author, or citation graph
+description = Discover academic research and citations from Semantic Scholar
