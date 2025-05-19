@@ -13,6 +13,7 @@ import requests
 import logging
 from typing import Dict, List, Any, Callable
 from functools import partial
+from agents import function_tool
 
 # Load environment variables from .env
 load_dotenv()

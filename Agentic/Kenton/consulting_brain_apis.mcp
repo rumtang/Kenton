@@ -3,6 +3,7 @@
 
 [NewsAPI]
 name = News API
+
 endpoint = https://newsapi.org/v2/everything
 auth = NEWS_API_KEY
 auth_type = Bearer
@@ -27,11 +28,12 @@ description = API for company data, financials, and profiles
 
 [MarketDataAPI]
 name = Market Data API
-endpoint = https://financialmodelingprep.com/api/v3/quote/AAPL
+endpoint = https://financialmodelingprep.com/api/v3/quote/{symbol}
 auth = MARKET_DATA_KEY
 auth_type = Query-Param-apikey
 use_cases = Get real-time stock market data and financial indicators
 description = Financial market data API for stocks, currencies, and commodities
+parameters = symbol:string:required
 
 [IndustryReportsAPI]
 name = Industry Reports API
@@ -81,10 +83,10 @@ auth_type = None
 use_cases = Monitor world news trends, sentiment, and breaking events
 description = Global news and event monitoring API covering over 100 languages
 
-[SemanticScholarAPI]
-name = Semantic Scholar API
-endpoint = https://api.semanticscholar.org/graph/v1/paper/search
-auth = SEMANTIC_SCHOLAR_KEY
-auth_type = API-Key
-use_cases = Search scientific papers by topic, author, or citation graph
-description = Discover academic research and citations from Semantic Scholar
+#[SemanticScholarAPI]
+#name = Semantic Scholar API
+#endpoint = https://api.semanticscholar.org/graph/v1/paper/search
+#auth = SEMANTIC_SCHOLAR_KEY
+#auth_type = API-Key
+#use_cases = Search scientific papers by topic, author, or citation graph
+#description = Discover academic research and citations from Semantic Scholar

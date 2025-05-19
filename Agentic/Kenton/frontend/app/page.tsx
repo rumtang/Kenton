@@ -1,9 +1,9 @@
-import ExactCLIApp from '@/components/ExactCLIApp';
+import SimpleResearchApp from '@/components/SimpleResearchApp';
 
 export default function Home() {
   return (
     <main>
-      <ExactCLIApp />
+      <SimpleResearchApp />
     </main>
   );
 }

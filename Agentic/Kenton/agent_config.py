@@ -12,7 +12,7 @@ import os
 # Load environment variables from .env file
 load_dotenv()
 
-def get_agent(model="o3-responses"):
+def get_agent(model="gpt-4.1"):
     """
     Returns a configured Deep Research agent with:
     - Research-focused instructions
@@ -43,25 +43,31 @@ def get_agent(model="o3-responses"):
             tools.append(file_search_tool)
     
     # Load MCP API tools if available
-    try:
-        mcp_path = os.getenv("MCP_CONFIG_PATH", "./consulting_brain_apis.mcp")
-        if os.path.exists(mcp_path):
-            api_manager = APIManager(mcp_path)
-            mcp_tools = api_manager.get_tools()
-            # Add MCP tools as function tools
-            for tool in mcp_tools:
-                tools.append(tool["function"])
-            print(f"Loaded {len(mcp_tools)} API tools from {mcp_path}")
-    except Exception as e:
-        print(f"Failed to load MCP tools: {e}")
+    # Convert MCP tools to proper agent tool format
+    if True:  # Re-enabled MCP tools
+        try:
+            mcp_path = os.getenv("MCP_CONFIG_PATH", "./consulting_brain_apis.mcp") 
+            if os.path.exists(mcp_path):
+                # Import the simple wrapper to bypass schema validation issues
+                from tools.simple_mcp_wrapper import get_mcp_tools
+                wrapped_tools = get_mcp_tools(mcp_path)
+                tools.extend(wrapped_tools)
+                print(f"Loaded {len(wrapped_tools)} API tools from {mcp_path}")
+        except Exception as e:
+            print(f"Failed to load MCP tools: {e}")
     
     return Agent(
         name="DeepResearcher",
         instructions="""
-You are a strategic advisor who helps business executives understand how technological and market trends actually impact their organizations. Your analysis should be immediately actionable in boardrooms and executive committees.
+You are a strategic advisor who helps business executives understand how technological and market trends actually impact their organizations. Your analysis should be immediately actionable in boardrooms and executive committees. You also provide general information when requested.
 
 CORE MISSION:
-Help executives answer: "So what does this mean for MY business?"
+Help executives answer: "So what does this mean for MY business?" Also answer general queries when asked.
+
+AVAILABLE TOOLS:
+You have access to real-time data tools including weather APIs, news APIs, market data, and more. Use these tools whenever relevant data would enhance your response. 
+- For weather queries: Use the weather API tool with location parameter
+- For simple queries like weather, use the appropriate tool directly without business analysis
 
 DOCUMENT ACCESS:
 Use the file_search tool to access internal documents and reports when queries require specific company information or proprietary data. Always cite your sources using the provided citation format when referencing documents.
