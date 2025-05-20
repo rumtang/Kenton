@@ -54,6 +54,13 @@ If requirements are ambiguous, ask before coding.
 - Use `Runner.run_sync(agent, prompt)` pattern
 - Output structured `.md` or `.json` report
 
+## CRITICAL: API INTEGRATION REQUIREMENTS
+- **ALWAYS** use the OpenAI SDK for all API integrations
+- **NEVER** use Anthropic, Claude, or other LLM providers for any LLM, search, or vector database functionality (external data APIs like weather, news, etc. are fine)
+- **ENSURE** all frontend and backend components use exactly the same OpenAI agent configuration
+- **MAINTAIN** consistent agent behavior between CLI and web interface
+- **VERIFY** that any streaming implementation uses OpenAI's streaming format
+
 ### 4.1 Error Handling Guidelines
 All tools should implement diagnostic-rich error handling with:
 
@@ -71,8 +78,8 @@ class AgentExecutionError(Exception):
 When using OpenAI Agents SDK for file search:
 
 - Always use `vector_store_ids` as an array: `vector_store_ids=[vector_store_id]`
-- For Threads API message attachments, use `file_id` (singular) not `file_ids`
-- Never use `file_id: None` - either provide a valid ID or omit the attachment
+- For API message attachments to specific files, use `file_id` (singular)
+- Never use `file_id: None` - either provide a valid ID or omit the parameter
 - Set `OPENAI_VECTOR_STORE_ID` in .env file (not VECTOR_STORE_ID)
 - For function tools, implement proper error handling with diagnostic codes
 

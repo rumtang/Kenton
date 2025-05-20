@@ -42,6 +42,15 @@ A strategic research agent with real-time data access through MCP tools.
 - `OPENAI_VECTOR_STORE_ID` - Required for file search functionality
 - API keys for various services (NEWS_API_KEY, etc.)
 
+## API Integration Standards
+This project strictly adheres to the following integration standards:
+
+1. **OpenAI SDK Only**: All API integrations must use the OpenAI SDK (≥1.30)
+2. **Consistent Agent Configuration**: Both CLI and web interfaces must use identical agent configurations
+3. **Direct Agent Access**: Frontend must directly access the same agent implementation as the CLI
+4. **OpenAI LLM API Only**: All LLM, search, and vector database functionality must use OpenAI APIs only (never use Anthropic/Claude or other LLM providers)
+5. **CLI-Web Equivalence**: Research from CLI or web must produce identical outputs with identical settings
+
 ### Vector Store / File Search Configuration
 To use file search functionality:
 1. Create a vector store in the OpenAI dashboard

@@ -7,8 +7,8 @@ import argparse
 # Clean problematic environment variables BEFORE any imports
 def clean_environment():
     """Remove or clean environment variables with problematic encoding."""
-    problematic_vars = ['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_DEPLOYMENT', 
-                       'VECTOR_STORE_ID', 'OPENAI_VECTOR_STORE_ID']
+    # Only clean variables that have encoding issues, not valid API keys
+    problematic_vars = ['OPENAI_BASE_URL', 'OPENAI_DEPLOYMENT', 'VECTOR_STORE_ID']
     
     for var in problematic_vars:
         if var in os.environ:
@@ -17,6 +17,13 @@ def clean_environment():
             if '…' in value or '\u2026' in value:
                 del os.environ[var]
                 print(f"[Info] Removed {var} due to encoding issues")
+    
+    # Special handling for API key - only remove if it's corrupted
+    if 'OPENAI_API_KEY' in os.environ:
+        api_key = os.environ['OPENAI_API_KEY']
+        if '…' in api_key or '\u2026' in api_key or len(api_key) < 50:
+            del os.environ['OPENAI_API_KEY']
+            print(f"[Info] Removed OPENAI_API_KEY due to corruption")
 
 # Clean environment first
 clean_environment()
@@ -31,38 +38,21 @@ from agents import Runner
 # Load environment variables from .env file (will reload cleaned vars)
 load_dotenv(override=True)
 
-def main():
-    """Main function to run the Deep Research agent"""
+def run_agent(query, model='o3'):
+    """Run the Deep Research agent with the specified query and model
     
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Deep Research Agent")
-    parser.add_argument('--vector-store-id', help='Vector store ID (overrides env variable)')
-    parser.add_argument('--model', default='o3', help='Model to use (default: o3)')
-    args = parser.parse_args()
-    
-    # Set vector store ID if provided
-    if args.vector_store_id:
-        os.environ['VECTOR_STORE_ID'] = args.vector_store_id
-    
+    This function can be called programmatically or from the command line.
+    It returns the agent's response.
+    """
     # Initialize the agent with configuration
-    print(f"Initializing Deep Research Agent with {args.model}...")
-    agent = get_agent(model=args.model)
+    print(f"Initializing Deep Research Agent with {model}...")
+    agent = get_agent(model=model)
     
-    # Get user input or use default prompt
-    try:
-        user_prompt = input("Enter your research question: ").strip()
-        if not user_prompt:
-            user_prompt = "Research the impact of generative AI on marketing."
-            print(f"Using default prompt: {user_prompt}")
-    except (EOFError, KeyboardInterrupt):
-        user_prompt = "Research the impact of generative AI on marketing."
-        print(f"\nUsing default prompt: {user_prompt}")
-    
-    print(f"\n🔬 Starting research on: {user_prompt}\n")
+    print(f"\n🔬 Starting research on: {query}\n")
     
     try:
         # Run the agent synchronously
-        result = Runner.run_sync(agent, user_prompt)
+        result = Runner.run_sync(agent, query)
         
         # Print the final output
         print("\n📊 Final Research Report:\n")
@@ -70,10 +60,44 @@ def main():
         print(result.final_output)
         print("=" * 50)
         
-    except Exception as e:
-        print(f"\n❌ Error running agent: {e}")
+        # Return the result for programmatic use
+        return result.final_output
         
-    print("\n✅ Research complete!")
+    except Exception as e:
+        error_msg = f"\n❌ Error running agent: {e}"
+        print(error_msg)
+        return error_msg
+    finally:
+        print("\n✅ Research complete!")
+
+def main():
+    """Main function to run the Deep Research agent from the command line"""
+    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Deep Research Agent")
+    parser.add_argument('--vector-store-id', help='Vector store ID (overrides env variable)')
+    parser.add_argument('--model', default='o3', help='Model to use (default: o3)')
+    parser.add_argument('--query', help='Research query to process')
+    args = parser.parse_args()
+    
+    # Set vector store ID if provided
+    if args.vector_store_id:
+        os.environ['VECTOR_STORE_ID'] = args.vector_store_id
+    
+    # Get query from arguments or prompt the user
+    user_prompt = args.query
+    if not user_prompt:
+        try:
+            user_prompt = input("Enter your research question: ").strip()
+            if not user_prompt:
+                user_prompt = "Research the impact of generative AI on marketing."
+                print(f"Using default prompt: {user_prompt}")
+        except (EOFError, KeyboardInterrupt):
+            user_prompt = "Research the impact of generative AI on marketing."
+            print(f"\nUsing default prompt: {user_prompt}")
+    
+    # Run the agent
+    run_agent(user_prompt, args.model)
 
 if __name__ == "__main__":
     main()
