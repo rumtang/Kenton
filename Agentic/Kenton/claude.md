@@ -83,6 +83,29 @@ When using OpenAI Agents SDK for file search:
 - Set `OPENAI_VECTOR_STORE_ID` in .env file (not VECTOR_STORE_ID)
 - For function tools, implement proper error handling with diagnostic codes
 
+### 4.3 API Key Management - CRITICAL
+To prevent API key corruption that causes agent failures:
+
+1. **Never modify environment variables with ellipsis characters**
+   - If you see ellipsis (…) in any API key, it must be fixed
+   - The `main.py` file includes automatic detection and replacement
+
+2. **Use the failsafe implementation in `clean_environment()`**
+   ```python
+   # Special handling for API key - only remove if it's corrupted
+   if 'OPENAI_API_KEY' in os.environ:
+       api_key = os.environ['OPENAI_API_KEY']
+       if '…' in api_key or '\u2026' in api_key or len(api_key) < 50:
+           # Instead of just removing, replace with the correct key
+           correct_key = "sk-proj-..."  # Full API key stored here
+           os.environ['OPENAI_API_KEY'] = correct_key
+   ```
+
+3. **When encountering API key errors:**
+   - Run `python fix_env_permanent.py` which will create a fresh .env
+   - Always stop and restart services after fixing API key issues
+   - Verify the fix by checking agent initialization messages
+
 ---
 
 ## 5. Example Workflow: Phase 1

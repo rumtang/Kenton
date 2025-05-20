@@ -38,9 +38,20 @@ A strategic research agent with real-time data access through MCP tools.
 ## Configuration
 
 ### Environment Variables in `.env`:
-- `OPENAI_API_KEY` - Required
+- `OPENAI_API_KEY` - Required (must be complete, never truncated)
 - `OPENAI_VECTOR_STORE_ID` - Required for file search functionality
 - API keys for various services (NEWS_API_KEY, etc.)
+
+### CRITICAL: Preventing API Key Truncation
+To prevent the OpenAI API key from being truncated or corrupted:
+
+1. **Never manually edit the .env file** - use `fix_env_permanent.py` to regenerate it
+2. **Check for API key corruption** - If you see "[Info] Removed OPENAI_API_KEY due to corruption" errors:
+   - Run `python fix_env_permanent.py` to restore the proper key
+   - Restart services with `./stop_all.sh && ./start_all.sh`
+3. **Use the hardcoded failsafe** - The `main.py` file includes a failsafe that replaces corrupted keys
+
+These protections ensure the application never attempts to use an incomplete API key.
 
 ## API Integration Standards
 This project strictly adheres to the following integration standards:

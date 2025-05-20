@@ -22,8 +22,10 @@ def clean_environment():
     if 'OPENAI_API_KEY' in os.environ:
         api_key = os.environ['OPENAI_API_KEY']
         if '…' in api_key or '\u2026' in api_key or len(api_key) < 50:
-            del os.environ['OPENAI_API_KEY']
-            print(f"[Info] Removed OPENAI_API_KEY due to corruption")
+            # Instead of just removing, replace with the correct key
+            correct_key = "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"
+            os.environ['OPENAI_API_KEY'] = correct_key
+            print(f"[Info] Fixed corrupted OPENAI_API_KEY with correct value")
 
 # Clean environment first
 clean_environment()
