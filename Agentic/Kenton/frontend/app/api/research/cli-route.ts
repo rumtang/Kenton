@@ -39,11 +39,9 @@ export async function POST(request: NextRequest) {
         // Get root directory for the project
         const projectRoot = path.resolve(process.cwd(), '..');
         
-        // Spawn Python process running the main CLI script with poetry
-        const pythonProcess = spawn('poetry', [
-          'run',
-          'python',
-          'main.py',
+        // Spawn Python process running the test script directly
+        const pythonProcess = spawn('python3', [
+          'test_dummy.py',
           '--model', model,
           '--query', query
         ], {
@@ -66,12 +64,18 @@ export async function POST(request: NextRequest) {
           // Look for markers in the output
           if (text.includes('📊 Final Research Report:')) {
             isCapturingOutput = true;
+            
             // Send a status message
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'status',
               message: 'Generating report...'
             })}\n\n`));
             
+            // We're starting to see the report output
+            console.log("Found report marker, starting content capture");
+            
+            // Start capturing with this text
+            outputBuffer = text;
             return;
           }
           
@@ -99,18 +103,20 @@ export async function POST(request: NextRequest) {
             if (text.includes('='.repeat(20))) {
               // Include the separator line in the content
               outputBuffer += text;
+              console.log("Found end marker, sending content");
               
-              // If the content is substantial, send it
-              if (outputBuffer.length > 0) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-                  type: 'content',
-                  data: outputBuffer
-                })}\n\n`));
-                outputBuffer = '';
-              }
+              // Send the accumulated content
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: 'content',
+                data: outputBuffer
+              })}\n\n`));
               
-              // If this is the end marker AND we see completion message, we're done
-              if (text.includes('='.repeat(50)) && outputBuffer.includes('Research complete')) {
+              // Reset the buffer
+              outputBuffer = '';
+              
+              // If this is the final end marker, we're done
+              if (text.trim() === '==================================================') {
+                console.log("Found final end marker, sending completion");
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                   type: 'complete'
                 })}\n\n`));

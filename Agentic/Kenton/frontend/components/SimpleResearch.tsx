@@ -103,7 +103,14 @@ export default function SimpleResearch() {
                   console.log("Content received:", data.data);
                   // Force content to be a string
                   const contentData = typeof data.data === 'string' ? data.data : JSON.stringify(data.data);
-                  setContent(prev => prev + contentData);
+                  
+                  // Notify when we set content
+                  console.log(`Adding content chunk of length: ${contentData.length}`);
+                  setContent(prev => {
+                    const newContent = prev + contentData;
+                    console.log(`Total content length now: ${newContent.length}`);
+                    return newContent;
+                  });
                   break;
                   
                 case 'complete':
