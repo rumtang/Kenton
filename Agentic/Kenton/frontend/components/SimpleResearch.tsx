@@ -100,7 +100,10 @@ export default function SimpleResearch() {
                     currentStatus = '';
                   }
                   
-                  setContent(prev => prev + (data.data || ''));
+                  console.log("Content received:", data.data);
+                  // Force content to be a string
+                  const contentData = typeof data.data === 'string' ? data.data : JSON.stringify(data.data);
+                  setContent(prev => prev + contentData);
                   break;
                   
                 case 'complete':

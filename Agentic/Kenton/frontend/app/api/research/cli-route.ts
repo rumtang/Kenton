@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
         // Process stdout
         pythonProcess.stdout.on('data', (data) => {
           const text = data.toString();
+          console.log(`CLI Output: "${text}"`); // Debug log
           
           // Look for markers in the output
           if (text.includes('📊 Final Research Report:')) {
@@ -70,40 +71,48 @@ export async function POST(request: NextRequest) {
               type: 'status',
               message: 'Generating report...'
             })}\n\n`));
+            
+            // Create a mock report for testing
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+              type: 'content',
+              data: "Sample report content to test if display works correctly."
+            })}\n\n`));
+            
+            return;
+          }
+          
+          // Special case for the successful completion message
+          if (text.includes('✅ Research complete!')) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+              type: 'complete'
+            })}\n\n`));
             return;
           }
           
           if (isCapturingOutput) {
             // Check if we've reached the end marker
             if (text.includes('='.repeat(20))) {
-              // If we have content in the buffer and this is an end marker
-              if (outputBuffer && text.trim() === '='.repeat(50)) {
-                // Send the content
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-                  type: 'content',
-                  data: outputBuffer
-                })}\n\n`));
-                
-                // Clear the buffer
-                outputBuffer = '';
-                
-                // Assume we're now at the end
+              // This is likely the separator line
+              // Don't add this to the content, but send what we have
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: 'content',
+                data: outputBuffer
+              })}\n\n`));
+              outputBuffer = '';
+              
+              // If this is the end marker, we're done
+              if (text.includes('='.repeat(50))) {
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                   type: 'complete'
                 })}\n\n`));
-                
                 isCapturingOutput = false;
-              } else {
-                // This might be the start marker or another separator
-                // Just add it to the buffer
-                outputBuffer += text;
               }
             } else {
               // This is regular content
               outputBuffer += text;
               
-              // If we have a substantial amount of content, send it in chunks
-              if (outputBuffer.length > 300) {
+              // Send content more frequently in smaller chunks
+              if (outputBuffer.length > 100) {
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                   type: 'content',
                   data: outputBuffer
