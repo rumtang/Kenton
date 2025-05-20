@@ -1,3 +1,3 @@
 #!/bin/bash
-cd /Users/jonatkin/Documents/Agentic/Kenton
-poetry run python complete_raw_api_server.py
+cd "$(dirname "$0")"  # Change to script directory
+python streamlined_api_server.py
