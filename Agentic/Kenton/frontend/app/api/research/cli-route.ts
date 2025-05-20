@@ -39,8 +39,10 @@ export async function POST(request: NextRequest) {
         // Get root directory for the project
         const projectRoot = path.resolve(process.cwd(), '..');
         
-        // Spawn Python process running the main CLI script
-        const pythonProcess = spawn('python', [
+        // Spawn Python process running the main CLI script with poetry
+        const pythonProcess = spawn('poetry', [
+          'run',
+          'python',
           'main.py',
           '--model', model,
           '--query', query
