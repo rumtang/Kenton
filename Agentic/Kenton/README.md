@@ -37,9 +37,26 @@ A strategic research agent with real-time data access through MCP tools.
 
 ## Configuration
 
-Environment variables in `.env`:
+### Environment Variables in `.env`:
 - `OPENAI_API_KEY` - Required
+- `OPENAI_VECTOR_STORE_ID` - Required for file search functionality
 - API keys for various services (NEWS_API_KEY, etc.)
+
+### Vector Store / File Search Configuration
+To use file search functionality:
+1. Create a vector store in the OpenAI dashboard
+2. Add the vector store ID to your `.env` file as `OPENAI_VECTOR_STORE_ID`
+3. Upload your files to the vector store
+4. Use the `file_search` tool in your agent queries
+
+### API Error Handling
+All tools implement diagnostic-rich error codes with detailed information:
+- Error code format: `ERROR-XX000`
+- Each error includes:
+  - Problem description
+  - Context explaining what went wrong
+  - Solution steps to resolve the issue
+  - Technical details for debugging
 
 ## Archived Files
 
