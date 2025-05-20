@@ -72,36 +72,45 @@ export async function POST(request: NextRequest) {
               message: 'Generating report...'
             })}\n\n`));
             
-            // Create a mock report for testing
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-              type: 'content',
-              data: "Sample report content to test if display works correctly."
-            })}\n\n`));
-            
             return;
           }
           
           // Special case for the successful completion message
-          if (text.includes('✅ Research complete!')) {
+          if (text.includes('✅ Research complete!') && !isCapturingOutput) {
+            // Add this to the output buffer if we're not already capturing
+            outputBuffer += text;
+            
+            // Send the completion message
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+              type: 'content',
+              data: outputBuffer
+            })}\n\n`));
+            
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'complete'
             })}\n\n`));
+            
+            outputBuffer = '';
             return;
           }
           
           if (isCapturingOutput) {
-            // Check if we've reached the end marker
+            // Check if we've reached the end marker (==== separator)
             if (text.includes('='.repeat(20))) {
-              // This is likely the separator line
-              // Don't add this to the content, but send what we have
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-                type: 'content',
-                data: outputBuffer
-              })}\n\n`));
-              outputBuffer = '';
+              // Include the separator line in the content
+              outputBuffer += text;
               
-              // If this is the end marker, we're done
-              if (text.includes('='.repeat(50))) {
+              // If the content is substantial, send it
+              if (outputBuffer.length > 0) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                  type: 'content',
+                  data: outputBuffer
+                })}\n\n`));
+                outputBuffer = '';
+              }
+              
+              // If this is the end marker AND we see completion message, we're done
+              if (text.includes('='.repeat(50)) && outputBuffer.includes('Research complete')) {
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                   type: 'complete'
                 })}\n\n`));
@@ -111,7 +120,7 @@ export async function POST(request: NextRequest) {
               // This is regular content
               outputBuffer += text;
               
-              // Send content more frequently in smaller chunks
+              // Send content in smaller chunks but not too small
               if (outputBuffer.length > 100) {
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                   type: 'content',
@@ -136,6 +145,9 @@ export async function POST(request: NextRequest) {
 
         // Process exit
         pythonProcess.on('close', (code) => {
+          console.log(`Python process exited with code ${code}`);
+          console.log(`Final output buffer (${outputBuffer.length} chars):`, outputBuffer.substring(0, 100) + '...');
+          
           if (code !== 0) {
             // Send any error
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
@@ -152,7 +164,7 @@ export async function POST(request: NextRequest) {
             })}\n\n`));
           }
           
-          // Always send a complete signal
+          // Always send a complete signal if we haven't already
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({
             type: 'complete'
           })}\n\n`));
