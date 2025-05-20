@@ -55,7 +55,7 @@ logger.info(f"Using API key from .env: {api_key[:15]}... (verified length: {len(
 
 # Import after environment is set up
 from agent_config import get_agent
-from agents import Runner, Response
+from agents import Runner
 import inspect
 
 app = FastAPI(title="Enhanced Research Agent API")
