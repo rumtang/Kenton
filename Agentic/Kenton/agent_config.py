@@ -5,7 +5,6 @@ from tools.summarize import summarize
 from tools.compare_sources import compare_sources
 from tools.report_generator import generate_report
 from tools.file_search import file_search
-from tools.direct_mcp_tools import get_mcp_tools
 import os
 import logging
 
@@ -48,15 +47,14 @@ CORE MISSION:
 Help executives answer: "So what does this mean for MY business?" Also answer general queries when asked.
 
 AVAILABLE TOOLS:
-You have access to real-time data tools including weather APIs, news APIs, market data, and more. Use these tools whenever relevant data would enhance your response. 
+You have access to tools to help with research, analysis, and summarization. Use these tools whenever relevant data would enhance your response.
 
 TOOL SELECTION RULES:
-- For weather queries: ALWAYS use the WeatherAPI tool with location parameter
-- For news-related queries: ALWAYS use the NewsAPI tool
-- For market data queries: ALWAYS use MarketDataAPI
-- For company information: ALWAYS use CompanyInfoAPI
-- For simple queries like weather, use the appropriate tool directly without business analysis
-- NEVER use GDELTAPI for weather queries
+- For weather queries: Use the weather_api tool with a location parameter
+- For document search: Use the file_search tool
+- For comparing information: Use the compare_sources tool
+- For generating reports: Use the generate_report tool
+- For summarizing long content: Use the summarize tool
 
 DOCUMENT ACCESS:
 Use the file_search tool to access internal documents and reports when queries require specific company information or proprietary data. Always cite your sources using the provided citation format when referencing documents.
@@ -121,6 +119,27 @@ Executives need to know:
 Your job is to be the advisor who sees around corners and translates complexity into strategic clarity.
 """
 
+def get_api_tools():
+    """
+    Load API tools from the tools directory.
+    This function serves as an extension point for adding new API integrations.
+    
+    Returns:
+        List of API tool functions compatible with OpenAI Agents SDK
+    """
+    api_tools = []
+    
+    # Import available API tools
+    try:
+        from tools.weather_api import weather_api
+        api_tools.append(weather_api)
+        logger.info("Added weather API tool")
+    except ImportError:
+        logger.warning("Weather API tool not available")
+    
+    logger.info(f"Loaded {len(api_tools)} API tools")
+    return api_tools
+
 def get_agent(model="gpt-4.1"):
     """
     Returns a configured Deep Research agent with:
@@ -128,12 +147,12 @@ def get_agent(model="gpt-4.1"):
     - Model settings for consistency
     - Tools for research capabilities
     """
-    # Basic tools
+    # Basic tools that work with all models
     tools = [
         summarize,
         compare_sources,
         generate_report,
-        file_search  # Add file search as function tool
+        file_search  # Always include file search
     ]
     
     # Add vector search if configured
@@ -146,27 +165,24 @@ def get_agent(model="gpt-4.1"):
                 logger.info("Added vector file search tool")
         except Exception as e:
             logger.warning(f"Failed to load vector search tool: {e}")
-    
-    # Add MCP API tools with simplified wrapper
+
+    # Add API tools
     try:
-        # Get tools from simplified wrapper
-        mcp_tools = get_mcp_tools()
-        tools.extend(mcp_tools)
-        logger.info(f"Loaded {len(mcp_tools)} MCP tools successfully")
+        api_tools = get_api_tools()
+        if api_tools:
+            tools.extend(api_tools)
+            logger.info(f"Loaded {len(api_tools)} API tools successfully")
     except Exception as e:
-        logger.warning(f"Failed to load MCP tools: {e}")
+        logger.warning(f"Failed to load API tools: {e}")
     
     return Agent(
         name="DeepResearcher",
         instructions=INSTRUCTIONS,
-        # Using specified model
         model=model,
-        # Configure model settings based on model type
         model_settings=ModelSettings(
             max_tokens=16384,  # Large token limit for comprehensive responses
-            temperature=0.3 if model not in ["o3", "o4-mini", "o3-mini", "o3o", "gpt-4.1", "gpt-4.1-mini"] else None,  # o3 and 4.1 models ignore temperature
-            top_p=0.9 if model not in ["o3", "o4-mini", "o3-mini", "o3o", "gpt-4.1", "gpt-4.1-mini"] else None  # o3 and 4.1 models ignore top_p
+            temperature=0.3,  # Claude works well with this temperature
+            top_p=0.9  # Keep reasonable top_p for quality
         ),
-        # Include all tools
         tools=tools
     )

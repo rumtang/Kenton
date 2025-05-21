@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Fixed API server that runs the exact same process as run.py
-with better error handling and debugging for MCP tools
+API server for Deep Research Agent with improved error handling and diagnostics.
+Provides streaming responses and comprehensive health checks.
 """
 
 import os
@@ -32,14 +32,21 @@ if not env_file.exists():
     logger.error(f"ERROR: .env file not found at {env_file}")
     sys.exit(1)
 
-# Clear any problematic OPENAI variables to ensure we use .env
+# Only clean truly problematic environment variables
 for key in list(os.environ.keys()):
-    if key.startswith("OPENAI_"):
-        # Remove if it contains problematic characters or is too short
+    if key.startswith("OPENAI_") and key != "OPENAI_API_KEY":
+        # Remove if it contains problematic characters
         value = os.environ.get(key, "")
-        if "…" in value or "\u2026" in value or (key == "OPENAI_API_KEY" and len(value) < 50):
+        if "…" in value or "\u2026" in value:
             logger.info(f"Removing problematic {key}: {value[:20]}...")
             del os.environ[key]
+
+# Special handling for API key - keep it unless corrupted
+if "OPENAI_API_KEY" in os.environ:
+    api_key = os.environ["OPENAI_API_KEY"]
+    if "…" in api_key or "\u2026" in api_key:
+        logger.info(f"Removing corrupted OPENAI_API_KEY")
+        del os.environ["OPENAI_API_KEY"]
 
 # Load environment from .env file
 from dotenv import load_dotenv
@@ -57,7 +64,7 @@ logger.info(f"Using API key from .env: {api_key[:15]}... (verified length: {len(
 from agent_config import get_agent
 from agents import Runner
 
-app = FastAPI(title="Fixed Research Agent API")
+app = FastAPI(title="Research Agent API")
 
 # Configure CORS
 app.add_middleware(
@@ -70,7 +77,7 @@ app.add_middleware(
 
 class ResearchQuery(BaseModel):
     query: str
-    model: str = "gpt-4.1"  # Default to gpt-4.1 for MCP tools support
+    model: str = "gpt-4.1"  # Default model
 
 @app.post("/api/research")
 async def research(request: ResearchQuery):
@@ -130,21 +137,17 @@ async def research(request: ResearchQuery):
 
 @app.get("/api/health")
 async def health():
-    # Check if MCP tools are loaded
+    """Provides health status and available tools"""
     try:
         agent = get_agent(model="gpt-4.1")
         tool_count = len(agent.tools)
         tool_names = [getattr(tool, '__name__', str(tool)) for tool in agent.tools]
-        
-        # Check if weather tool exists
-        has_weather = any('weather' in name.lower() for name in tool_names)
         
         return {
             "status": "healthy",
             "message": "Research agent API is running",
             "tools": {
                 "count": tool_count,
-                "has_weather": has_weather,
                 "names": tool_names[:5]  # Show first 5 tools
             }
         }
@@ -155,5 +158,5 @@ async def health():
         }
 
 if __name__ == "__main__":
-    logger.info("Starting fixed agent API...")
+    logger.info("Starting research agent API...")
     uvicorn.run(app, host="0.0.0.0", port=8001)

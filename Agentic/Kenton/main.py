@@ -22,10 +22,8 @@ def clean_environment():
     if 'OPENAI_API_KEY' in os.environ:
         api_key = os.environ['OPENAI_API_KEY']
         if '…' in api_key or '\u2026' in api_key or len(api_key) < 50:
-            # Instead of just removing, replace with the correct key
-            correct_key = "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"
-            os.environ['OPENAI_API_KEY'] = correct_key
-            print(f"[Info] Fixed corrupted OPENAI_API_KEY with correct value")
+            del os.environ['OPENAI_API_KEY']
+            print(f"[Info] Removed corrupted OPENAI_API_KEY")
 
 # Clean environment first
 clean_environment()
@@ -40,7 +38,7 @@ from agents import Runner
 # Load environment variables from .env file (will reload cleaned vars)
 load_dotenv(override=True)
 
-def run_agent(query, model='o3'):
+def run_agent(query, model='gpt-4.1'):
     """Run the Deep Research agent with the specified query and model
     
     This function can be called programmatically or from the command line.
@@ -78,19 +76,19 @@ def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Deep Research Agent")
     parser.add_argument('--vector-store-id', help='Vector store ID (overrides env variable)')
-    parser.add_argument('--model', default='o3', help='Model to use (default: o3)')
+    parser.add_argument('--model', default='gpt-4.1', help='Model to use (default: gpt-4.1)')
     parser.add_argument('--query', help='Research query to process')
     args = parser.parse_args()
     
     # Set vector store ID if provided
     if args.vector_store_id:
-        os.environ['VECTOR_STORE_ID'] = args.vector_store_id
+        os.environ['OPENAI_VECTOR_STORE_ID'] = args.vector_store_id
     
     # Get query from arguments or prompt the user
     user_prompt = args.query
     if not user_prompt:
         try:
-            user_prompt = input("Enter your research question: ").strip()
+            user_prompt = input("Tell me what you want to explore: ").strip()
             if not user_prompt:
                 user_prompt = "Research the impact of generative AI on marketing."
                 print(f"Using default prompt: {user_prompt}")
