@@ -40,21 +40,45 @@ from agents import Runner
 # Load environment variables from .env file (will reload cleaned vars)
 load_dotenv(override=True)
 
-def run_agent(query, model='gpt-4.1'):
+def run_agent(query, model='gpt-4.1', enable_reasoning=False):
     """Run the Deep Research agent with the specified query and model
     
     This function can be called programmatically or from the command line.
     It returns the agent's response.
+    
+    Args:
+        query (str): The research query to process
+        model (str): The model to use, e.g. 'gpt-4.1', 'o3', 'o3-mini'
+        enable_reasoning (bool): Whether to enable reasoning capabilities
+    
+    Returns:
+        str: The agent's final response
     """
-    # Initialize the agent with configuration
-    print(f"Initializing Deep Research Agent with {model}...")
-    agent = get_agent(model=model)
+    # Initialize the agent with configuration and pass query for reasoning effort determination
+    reasoning_status = "with reasoning" if enable_reasoning else "in standard mode"
+    print(f"Initializing Deep Research Agent with {model} {reasoning_status}...")
+    agent = get_agent(model=model, enable_reasoning=enable_reasoning, query=query)
     
     print(f"\n🔬 Starting research on: {query}\n")
     
     try:
         # Run the agent synchronously
         result = Runner.run_sync(agent, query)
+        
+        # Print reasoning trace if available
+        if enable_reasoning:
+            reasoning_trace = None
+            # Check various property names that might contain reasoning
+            for attr in ['reasoning_trace', 'reasoning', 'trace']:
+                if hasattr(result, attr) and getattr(result, attr):
+                    reasoning_trace = getattr(result, attr)
+                    break
+                    
+            if reasoning_trace:
+                print("\n🧠 Reasoning Process:\n")
+                print("-" * 50)
+                print(reasoning_trace)
+                print("-" * 50)
         
         # Print the final output
         print("\n📊 Final Research Report:\n")
@@ -80,6 +104,7 @@ def main():
     parser.add_argument('--vector-store-id', help='Vector store ID (overrides env variable)')
     parser.add_argument('--model', default='gpt-4.1', help='Model to use (default: gpt-4.1)')
     parser.add_argument('--query', help='Research query to process')
+    parser.add_argument('--reasoning', action='store_true', help='Enable reasoning capabilities')
     args = parser.parse_args()
     
     # Set vector store ID if provided
@@ -98,8 +123,8 @@ def main():
             user_prompt = "Research the impact of generative AI on marketing."
             print(f"\nUsing default prompt: {user_prompt}")
     
-    # Run the agent
-    run_agent(user_prompt, args.model)
+    # Run the agent with or without reasoning
+    run_agent(user_prompt, args.model, enable_reasoning=args.reasoning)
 
 if __name__ == "__main__":
     main()

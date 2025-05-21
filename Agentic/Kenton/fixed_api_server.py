@@ -87,15 +87,17 @@ app.add_middleware(
 class ResearchQuery(BaseModel):
     query: str
     model: str = "gpt-4.1"  # Default model
+    enable_reasoning: bool = False  # Enable reasoning capabilities if model supports it
 
 @app.post("/api/research")
 async def research(request: ResearchQuery):
     """Process a research query with enhanced debugging"""
     async def generate():
         try:
-            # Initialize agent with model
-            logger.info(f"Initializing agent with {request.model}...")
-            agent = get_agent(model=request.model)
+            # Initialize agent with model and reasoning if enabled
+            # Pass the query to determine appropriate reasoning effort level
+            logger.info(f"Initializing agent with {request.model}, reasoning: {request.enable_reasoning}...")
+            agent = get_agent(model=request.model, enable_reasoning=request.enable_reasoning, query=request.query)
             
             # Log available tools
             logger.info(f"Agent has {len(agent.tools)} tools available")
@@ -103,7 +105,9 @@ async def research(request: ResearchQuery):
                 tool_name = getattr(tool, '__name__', getattr(tool, 'name', str(tool)))
                 logger.info(f"  Tool {i+1}: {tool_name}")
             
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Starting research...'})}\n\n"
+            # Include reasoning status in initialization message
+            reasoning_status = "with reasoning enabled" if request.enable_reasoning else "standard mode"
+            yield f"data: {json.dumps({'type': 'status', 'message': f'Starting research ({reasoning_status})...'})}\n\n"
             
             # Run the agent
             logger.info(f"Running query: {request.query}")
@@ -119,14 +123,48 @@ async def research(request: ResearchQuery):
             
             logger.info(f"Got result: {content[:100]}...")
             
-            # Stream the content in chunks
+            # Extract reasoning trace if available and enabled
+            reasoning_trace = None
+            if request.enable_reasoning:
+                # Check various property names that might contain reasoning
+                for attr in ['reasoning_trace', 'reasoning', 'trace']:
+                    if hasattr(result, attr) and getattr(result, attr):
+                        reasoning_value = getattr(result, attr)
+                        # Handle case where reasoning is an object with content
+                        if isinstance(reasoning_value, dict) and 'content' in reasoning_value:
+                            reasoning_trace = reasoning_value['content']
+                        else:
+                            reasoning_trace = str(reasoning_value)
+                        break
+                        
+                logger.info(f"Reasoning trace available: {len(reasoning_trace) if reasoning_trace else 0} characters")
+                
+                if reasoning_trace:
+                    # Stream reasoning trace in smaller chunks first
+                    yield f"data: {json.dumps({'type': 'reasoning_start'})}\n\n"
+                    
+                    # Stream reasoning trace in chunks
+                    reasoning_chunk_size = 100
+                    for i in range(0, len(reasoning_trace), reasoning_chunk_size):
+                        chunk = reasoning_trace[i:i+reasoning_chunk_size]
+                        yield f"data: {json.dumps({'type': 'reasoning', 'data': chunk})}\n\n"
+                        await asyncio.sleep(0.01)  # Small delay for streaming effect
+                    
+                    yield f"data: {json.dumps({'type': 'reasoning_end'})}\n\n"
+            
+            # Stream the actual content in chunks
             chunk_size = 100
             for i in range(0, len(content), chunk_size):
                 chunk = content[i:i+chunk_size]
                 yield f"data: {json.dumps({'type': 'content', 'data': chunk})}\n\n"
                 await asyncio.sleep(0.01)  # Small delay for streaming effect
             
-            yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+            # Include reasoning info in the completion message
+            completion_data = {
+                'type': 'complete',
+                'reasoning_available': reasoning_trace is not None
+            }
+            yield f"data: {json.dumps(completion_data)}\n\n"
             
         except Exception as e:
             import traceback
@@ -152,12 +190,19 @@ async def health():
         tool_count = len(agent.tools)
         tool_names = [getattr(tool, '__name__', str(tool)) for tool in agent.tools]
         
+        # List models with reasoning support
+        reasoning_compatible_models = ["o3", "o4-mini", "o3-mini", "o3o", "gpt-4.1", "gpt-4.1-mini"]
+        
         return {
             "status": "healthy",
             "message": "Research agent API is running",
             "tools": {
                 "count": tool_count,
                 "names": tool_names[:5]  # Show first 5 tools
+            },
+            "features": {
+                "reasoning_support": True,
+                "reasoning_compatible_models": reasoning_compatible_models
             }
         }
     except Exception as e:

@@ -7,6 +7,7 @@ from tools.report_generator import generate_report
 from tools.file_search import file_search
 import os
 import logging
+from task_complexity import determine_reasoning_effort
 
 # Try to import load_dotenv but provide fallback if not available
 try:
@@ -174,31 +175,52 @@ def get_api_tools():
     logger.info(f"Loaded {len(api_tools)} API tools total")
     return api_tools
 
-def get_agent(model="gpt-4.1"):
+def get_agent(model="gpt-4.1", enable_reasoning=False, query=""):
     """
     Returns a configured Deep Research agent with:
     - Research-focused instructions
     - Model settings for consistency
     - Tools for research capabilities
-    """
-    # Basic tools that work with all models
-    tools = [
-        summarize,
-        compare_sources,
-        generate_report,
-        file_search  # Always include file search
-    ]
+    - Optional reasoning capabilities (for compatible models)
     
-    # Add vector search if configured
-    if os.getenv("OPENAI_VECTOR_STORE_ID"):
-        try:
-            from tools.vector_search import get_file_search_tool
-            file_search_tool = get_file_search_tool()
-            if file_search_tool:
-                tools.append(file_search_tool)
-                logger.info("Added vector file search tool")
-        except Exception as e:
-            logger.warning(f"Failed to load vector search tool: {e}")
+    Args:
+        model (str): The model to use (e.g. "gpt-4.1", "o3", "o3-mini")
+        enable_reasoning (bool): Whether to enable reasoning features
+        query (str): The query to analyze for determining reasoning effort
+    """
+    # Determine which tools are compatible with this model
+    reasoning_models = ["o3", "o4-mini", "o3-mini", "o3o"]
+    is_reasoning_model = model in reasoning_models
+    
+    # For reasoning models, we need to be careful about which tools we include
+    # as some hosted tools are not supported with o3
+    if is_reasoning_model:
+        # Basic tools that are compatible with reasoning models
+        tools = [
+            summarize,
+            compare_sources,
+            generate_report
+            # No file_search for reasoning models, per API error
+        ]
+    else:
+        # Basic tools for non-reasoning models
+        tools = [
+            summarize,
+            compare_sources,
+            generate_report,
+            file_search  # Include file search for non-reasoning models
+        ]
+        
+        # Add vector search if configured (only for non-reasoning models)
+        if os.getenv("OPENAI_VECTOR_STORE_ID"):
+            try:
+                from tools.vector_search import get_file_search_tool
+                file_search_tool = get_file_search_tool()
+                if file_search_tool:
+                    tools.append(file_search_tool)
+                    logger.info("Added vector file search tool")
+            except Exception as e:
+                logger.warning(f"Failed to load vector search tool: {e}")
 
     # Add API tools
     try:
@@ -209,14 +231,49 @@ def get_agent(model="gpt-4.1"):
     except Exception as e:
         logger.warning(f"Failed to load API tools: {e}")
     
+    # Determine if reasoning is supported by this model
+    reasoning_compatible_models = ["o3", "o4-mini", "o3-mini", "o3o", "gpt-4.1", "gpt-4.1-mini"]
+    can_use_reasoning = model in reasoning_compatible_models and enable_reasoning
+    
+    if can_use_reasoning:
+        logger.info(f"Enabling reasoning capabilities for model: {model}")
+    
+    # Set up model settings based on model type and reasoning preference
+    if model in reasoning_compatible_models:
+        # For reasoning-compatible models, we don't need to specify temperature and top_p
+        # as they'll be automatically optimized for reasoning capability
+        
+        # Use standard model settings but adjust for reasoning if needed
+        model_settings = ModelSettings(
+            max_tokens=16384,  # Large token limit for comprehensive responses
+        )
+        
+        # Set reasoning parameter when enabled (based on API documentation)
+        if enable_reasoning:
+            # For o3, reasoning effort parameter needs to be set as an object with effort property
+            # We'll use adaptive reasoning based on the task complexity
+            if query:
+                # Determine effort level based on query
+                effort = determine_reasoning_effort(query)
+                logger.info(f"Setting reasoning effort to '{effort}' based on query complexity")
+            else:
+                # Default to medium if no query is provided
+                effort = "medium"
+                logger.info(f"Setting reasoning effort to default '{effort}'")
+                
+            model_settings.reasoning = {"effort": effort}
+    else:
+        # For other models, use our standard settings
+        model_settings = ModelSettings(
+            max_tokens=16384,  # Large token limit for comprehensive responses
+            temperature=0.3,  # Claude works well with this temperature
+            top_p=0.9  # Keep reasonable top_p for quality
+        )
+    
     return Agent(
         name="DeepResearcher",
         instructions=INSTRUCTIONS,
         model=model,
-        model_settings=ModelSettings(
-            max_tokens=16384,  # Large token limit for comprehensive responses
-            temperature=0.3,  # Claude works well with this temperature
-            top_p=0.9  # Keep reasonable top_p for quality
-        ),
+        model_settings=model_settings,
         tools=tools
     )
