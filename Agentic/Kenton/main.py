@@ -7,7 +7,7 @@ import argparse
 # Clean problematic environment variables BEFORE any imports
 def clean_environment():
     """Remove or clean environment variables with problematic encoding."""
-    # Only clean variables that have encoding issues, not valid API keys
+    # Only clean variables that have encoding issues
     problematic_vars = ['OPENAI_BASE_URL', 'OPENAI_DEPLOYMENT', 'VECTOR_STORE_ID']
     
     for var in problematic_vars:
@@ -21,9 +21,11 @@ def clean_environment():
     # Special handling for API key - only remove if it's corrupted
     if 'OPENAI_API_KEY' in os.environ:
         api_key = os.environ['OPENAI_API_KEY']
-        if '…' in api_key or '\u2026' in api_key or len(api_key) < 50:
+        # Check for problematic characters but allow project-scoped keys which are longer
+        if '…' in api_key or '\u2026' in api_key:
             del os.environ['OPENAI_API_KEY']
             print(f"[Info] Removed corrupted OPENAI_API_KEY")
+        # Don't check length here as project-scoped keys are longer
 
 # Clean environment first
 clean_environment()

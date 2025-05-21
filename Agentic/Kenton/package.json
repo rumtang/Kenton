@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "openai": "^4.8.0"  // Latest as of May, 2025 - supports project-scoped API keys
+  }
+}

@@ -30,9 +30,9 @@ _clean_env_var('VECTOR_STORE_ID')
 _clean_env_var('OPENAI_VECTOR_STORE_ID')
 
 # Note on API Usage:
-# - When using Threads API, 'file_id' (singular) is used for attaching specific files
+# - For attachments to specific files in the OpenAI API, use 'file_id' (singular)
 # - For vector search, use 'vector_store_ids' (plural) as an array
-# - Do not use 'file_id: None' - either provide a valid ID or omit the attachment
+# - Do not use 'file_id: None' - either provide a valid ID or omit the parameter
 
 from agents import function_tool
 from openai import OpenAI

@@ -54,8 +54,17 @@ load_dotenv(env_file, override=True)
 
 # Verify we have a valid API key
 api_key = os.getenv("OPENAI_API_KEY", "")
-if not api_key or len(api_key) < 50:
-    logger.error(f"ERROR: Invalid OPENAI_API_KEY loaded (length: {len(api_key)})")
+
+# Check for valid API key formats:
+# 1. Standard keys (start with 'sk-' and are ~51 chars)
+# 2. Project-scoped keys (start with 'sk-proj-' and can be longer)
+is_valid_key = (
+    (api_key.startswith("sk-") and len(api_key) >= 40) or
+    (api_key.startswith("sk-proj-") and len(api_key) >= 60)
+)
+
+if not api_key or not is_valid_key:
+    logger.error(f"ERROR: Invalid OPENAI_API_KEY loaded (format or length issue, length: {len(api_key)})")
     sys.exit(1)
 
 logger.info(f"Using API key from .env: {api_key[:15]}... (verified length: {len(api_key)})")
