@@ -56,6 +56,23 @@ TOOL SELECTION RULES:
 - For generating reports: Use the generate_report tool
 - For summarizing long content: Use the summarize tool
 
+FINANCIAL DATA TOOLS:
+You have access to Financial Modeling Prep APIs for comprehensive financial data:
+- Use company_profile for basic company information 
+- Use income_statement, balance_sheet, and cash_flow for financial statement analysis
+- Use key_metrics and financial_ratios for performance evaluation
+- Use stock_price for current quotes and historical_price for price history
+- Use stock_news and market_news for market and company news
+
+When analyzing companies:
+1. Start with profile data to understand the business
+2. Examine financial statements for detailed analysis
+3. Use ratios and metrics for comparative evaluation
+4. Check stock price performance for market perspective
+5. Review recent news for qualitative context
+
+Always include the required 'symbol' parameter for company-specific data.
+
 DOCUMENT ACCESS:
 Use the file_search tool to access internal documents and reports when queries require specific company information or proprietary data. Always cite your sources using the provided citation format when referencing documents.
 
@@ -137,7 +154,24 @@ def get_api_tools():
     except ImportError:
         logger.warning("Weather API tool not available")
     
-    logger.info(f"Loaded {len(api_tools)} API tools")
+    # Import financial API tools
+    try:
+        from tools.financial_api import (
+            company_profile, income_statement, balance_sheet, cash_flow, 
+            key_metrics, financial_ratios, stock_price, historical_price,
+            stock_news, market_news
+        )
+        financial_tools = [
+            company_profile, income_statement, balance_sheet, cash_flow, 
+            key_metrics, financial_ratios, stock_price, historical_price,
+            stock_news, market_news
+        ]
+        api_tools.extend(financial_tools)
+        logger.info(f"Added {len(financial_tools)} financial API tools")
+    except ImportError:
+        logger.warning("Financial API tools not available")
+    
+    logger.info(f"Loaded {len(api_tools)} API tools total")
     return api_tools
 
 def get_agent(model="gpt-4.1"):
