@@ -55,8 +55,6 @@ If requirements are ambiguous, ask before coding.
 - Output structured `.md` or `.json` report
 
 ## CRITICAL: API INTEGRATION REQUIREMENTS
-- **ALWAYS** use the OpenAI SDK for all API integrations
-- **NEVER** use Anthropic, Claude, or other LLM providers for any LLM, search, or vector database functionality (external data APIs like weather, news, etc. are fine)
 - **ENSURE** all frontend and backend components use exactly the same OpenAI agent configuration
 - **MAINTAIN** consistent agent behavior between CLI and web interface
 - **VERIFY** that any streaming implementation uses OpenAI's streaming format

@@ -106,11 +106,21 @@ export default function SimpleResearch() {
                   
                   // Notify when we set content
                   console.log(`Adding content chunk of length: ${contentData.length}`);
-                  setContent(prev => {
-                    const newContent = prev + contentData;
-                    console.log(`Total content length now: ${newContent.length}`);
-                    return newContent;
-                  });
+                  
+                  // If chunk contains the report header as the start of a new report,
+                  // replace all existing content
+                  if (contentData.includes('📊 Final Research Report:') && 
+                      contentData.indexOf('📊 Final Research Report:') < 10) {
+                    console.log("Found report header, starting fresh content");
+                    setContent(contentData);
+                  } else {
+                    // Append to existing content
+                    setContent(prev => {
+                      const newContent = prev + contentData;
+                      console.log(`Total content length now: ${newContent.length}`);
+                      return newContent;
+                    });
+                  }
                   break;
                   
                 case 'complete':

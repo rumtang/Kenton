@@ -1,9 +1,5 @@
-import SimpleResearchApp from '@/components/SimpleResearchApp';
+import SimpleResearch from '../components/SimpleResearch';
 
 export default function Home() {
-  return (
-    <main>
-      <SimpleResearchApp />
-    </main>
-  );
+  return <SimpleResearch />;
 }

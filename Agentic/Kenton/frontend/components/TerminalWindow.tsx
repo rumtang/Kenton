@@ -87,8 +87,9 @@ const TerminalWindow: React.FC<TerminalWindowProps> = ({
         {content && (
           <div className="mt-4 text-green-100 whitespace-pre-wrap">
             <div className="text-yellow-400 mb-2">[OUTPUT] Final Research Report:</div>
-            <div className="border border-gray-700 p-3 rounded bg-gray-900">
-              {content}
+            <div className="border border-gray-700 p-3 rounded bg-gray-900 overflow-auto max-h-[450px]">
+              {/* The pre element preserves whitespace better for terminal-like display */}
+              <pre className="text-green-100 font-mono whitespace-pre-wrap break-words">{content}</pre>
             </div>
             {isComplete && (
               <div className="mt-4 text-green-400">

@@ -76,27 +76,40 @@ export async function POST(request: NextRequest) {
             // We're starting to see the report output
             console.log("Found report marker, starting content capture");
             
-            // Start capturing with this text
-            outputBuffer = text;
+            // Extract the report header and add to buffer
+            const headerIdx = text.indexOf('📊 Final Research Report:');
+            outputBuffer = text.substring(headerIdx);
+            
+            // Immediately send this initial content chunk
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+              type: 'content',
+              data: outputBuffer
+            })}\n\n`));
+            
+            outputBuffer = '';
             return;
           }
           
           // Special case for the successful completion message
-          if (text.includes('✅ Research complete!') && !isCapturingOutput) {
-            // Add this to the output buffer if we're not already capturing
-            outputBuffer += text;
-            
-            // Send the completion message
+          if (text.includes('✅ Research complete!')) {
+            // Send the completion message, regardless of capture state
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-              type: 'content',
-              data: outputBuffer
+              type: 'status',
+              message: '✅ Research complete!'
             })}\n\n`));
             
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'complete'
             })}\n\n`));
             
-            outputBuffer = '';
+            // If we weren't capturing before, this could be the only output
+            if (!isCapturingOutput && outputBuffer === '') {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: 'content',
+                data: text
+              })}\n\n`));
+            }
+            
             return;
           }
           
@@ -117,19 +130,16 @@ export async function POST(request: NextRequest) {
               outputBuffer = '';
               
               // If this is the final end marker, we're done
-              if (text.trim() === '==================================================') {
+              if (text.includes('='.repeat(50))) {
                 console.log("Found final end marker, sending completion");
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-                  type: 'complete'
-                })}\n\n`));
                 isCapturingOutput = false;
               }
             } else {
               // This is regular content
               outputBuffer += text;
               
-              // Send content in smaller chunks but not too small
-              if (outputBuffer.length > 100) {
+              // Send content in smaller chunks to ensure timely updates
+              if (outputBuffer.length > 50) {
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                   type: 'content',
                   data: outputBuffer

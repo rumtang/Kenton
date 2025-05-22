@@ -20,28 +20,60 @@ export async function POST(request: NextRequest) {
 
     // Forward the request to the backend API
     const backendUrl = 'http://localhost:8001/api/research';
+    console.log(`Sending request to backend: ${backendUrl}`);
     
-    // Create a streaming response that proxies the backend
-    const backendResponse = await fetch(backendUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ query, model }),
-    });
-
-    // Return the streaming response directly from the backend
-    return new Response(backendResponse.body, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      },
-    });
+    // Add timeout to avoid hanging forever
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    try {
+      // Create a streaming response that proxies the backend
+      const backendResponse = await fetch(backendUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query, model }),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!backendResponse.ok) {
+        console.error(`Backend returned error: ${backendResponse.status} ${backendResponse.statusText}`);
+        throw new Error(`Backend error: ${backendResponse.status}`);
+      }
+      
+      // Return the streaming response directly from the backend
+      return new Response(backendResponse.body, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
+    } catch (fetchError) {
+      console.error('Backend fetch error:', fetchError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to connect to backend server', 
+          details: fetchError instanceof Error ? fetchError.message : String(fetchError) 
+        }),
+        {
+          status: 502,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    }
   } catch (error) {
     console.error('API proxy error:', error);
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
+      JSON.stringify({ 
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : String(error)
+      }),
       {
         status: 500,
         headers: {

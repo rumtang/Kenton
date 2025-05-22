@@ -1,8 +1,9 @@
-# Main entry point: Launches the agent with a sample query
+# Main entry point: Launches the agent with an interactive command loop
 
 import sys
 import os
 import argparse
+import readline  # Enable command history and line editing
 
 # Clean problematic environment variables BEFORE any imports
 def clean_environment():
@@ -105,26 +106,46 @@ def main():
     parser.add_argument('--model', default='gpt-4.1', help='Model to use (default: gpt-4.1)')
     parser.add_argument('--query', help='Research query to process')
     parser.add_argument('--reasoning', action='store_true', help='Enable reasoning capabilities')
+    parser.add_argument('--interactive', '-i', action='store_true', help='Run in interactive mode')
     args = parser.parse_args()
     
     # Set vector store ID if provided
     if args.vector_store_id:
         os.environ['OPENAI_VECTOR_STORE_ID'] = args.vector_store_id
     
-    # Get query from arguments or prompt the user
-    user_prompt = args.query
-    if not user_prompt:
-        try:
-            user_prompt = input("Tell me what you want to explore: ").strip()
-            if not user_prompt:
-                user_prompt = "Research the impact of generative AI on marketing."
-                print(f"Using default prompt: {user_prompt}")
-        except (EOFError, KeyboardInterrupt):
-            user_prompt = "Research the impact of generative AI on marketing."
-            print(f"\nUsing default prompt: {user_prompt}")
+    # If a query is provided directly via command line, run in single-query mode
+    if args.query and not args.interactive:
+        run_agent(args.query, args.model, enable_reasoning=args.reasoning)
+        return
     
-    # Run the agent with or without reasoning
-    run_agent(user_prompt, args.model, enable_reasoning=args.reasoning)
+    # Otherwise, run in interactive mode
+    print("🔎 Deep Research CLI – type 'exit' to quit")
+    print(f"Model: {args.model} {'with reasoning' if args.reasoning else 'standard mode'}")
+    
+    while True:
+        try:
+            # Get user query
+            query = input("\nTell me what you want to explore: ").strip()
+            
+            # Check for exit command
+            if query.lower() in {"exit", "quit", "q"}:
+                print("Good-bye!")
+                break
+                
+            # Skip empty queries
+            if not query:
+                continue
+                
+            # Process query
+            run_agent(query, args.model, enable_reasoning=args.reasoning)
+            
+        except KeyboardInterrupt:
+            print("\nInterrupted – exiting.")
+            break
+        except Exception as err:
+            # Keep the loop alive on errors
+            print(f"\n⚠️  Error: {err}\n")
+            continue
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -5,6 +5,7 @@ Extremely simple API server that runs the exact same process as run.py
 
 import os
 import sys
+import time
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -65,20 +66,34 @@ app.add_middleware(
 class ResearchQuery(BaseModel):
     query: str
     model: str = "gpt-4.1"  # Default to gpt-4.1 for better availability
+    include_api_stats: bool = False  # Whether to include API call stats in response
 
 @app.post("/api/research")
 async def research(request: ResearchQuery):
     """Process a research query exactly like run.py does"""
+    # Use a simplified approach to track API calls
+    api_calls = []
+    
+    # Track this research session
+    session_id = f"research-{int(time.time())}"
+    
     async def generate():
         try:
             # Initialize agent with model
             print(f"Initializing agent with {request.model}...")
             agent = get_agent(model=request.model)
             
+            # Send initial status
             yield f"data: {json.dumps({'type': 'status', 'message': 'Starting research...'})}\n\n"
+            
+            # Record timestamp before running the agent
+            start_time = time.time()
             
             # Run the agent
             result = await Runner.run(agent, request.query)
+            
+            # Calculate duration
+            duration_ms = (time.time() - start_time) * 1000
             
             # Extract the final output
             if hasattr(result, 'final_output'):
@@ -89,13 +104,33 @@ async def research(request: ResearchQuery):
                 content = str(result)
             
             # Stream the content in chunks
-            chunk_size = 100
+            chunk_size = 1000  # Increased chunk size to reduce number of messages
             for i in range(0, len(content), chunk_size):
                 chunk = content[i:i+chunk_size]
                 yield f"data: {json.dumps({'type': 'content', 'data': chunk})}\n\n"
                 await asyncio.sleep(0.01)  # Small delay for streaming effect
             
-            yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+            # Add API stats if requested
+            if request.include_api_stats:
+                # Just provide basic timing information since we can't get the full stats yet
+                api_stats = {
+                    "timing": {
+                        "duration_ms": round(duration_ms, 2),
+                        "query": request.query,
+                        "model": request.model
+                    }
+                }
+                
+                # Send simplified API stats
+                yield f"data: {json.dumps({'type': 'api_stats', 'stats': api_stats})}\n\n"
+            
+            # Send completion event with timing information
+            yield f"data: {json.dumps({
+                'type': 'complete',
+                'timing': {
+                    'duration_ms': round(duration_ms, 2)
+                }
+            })}\n\n"
             
         except Exception as e:
             import traceback
@@ -117,6 +152,47 @@ async def research(request: ResearchQuery):
 async def health():
     return {"status": "healthy", "message": "Research agent API is running"}
 
+
+@app.get("/api/monitor")
+async def api_monitor():
+    """Get API call monitoring information."""
+    try:
+        # For now, return placeholder data instead of using the API monitor
+        return {
+            "stats": {
+                "total_calls": 0,
+                "active_calls": 0,
+                "error_count": 0,
+                "error_rate": 0.0,
+                "avg_duration_ms": 0,
+                "tools": {}
+            },
+            "recent_calls": [],
+            "visualization": {
+                "timeline": [
+                    {"time": "12:00", "total": 0, "success": 0, "error": 0, "tools": {}}
+                ],
+                "top_tools": [],
+                "top_error_tools": [],
+                "status_summary": {"success": 0, "error": 0}
+            },
+            "message": "API monitoring is available in the UI but not yet collecting data"
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 if __name__ == "__main__":
-    print("Starting truly simple agent API...")
-    uvicorn.run(app, host="0.0.0.0", port=8001)  # Different port to avoid conflicts
+    import argparse
+    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Start the research agent API server")
+    parser.add_argument("--port", type=int, default=8001, help="Port to run the server on")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind the server to")
+    args = parser.parse_args()
+    
+    print(f"Starting truly simple agent API on {args.host}:{args.port}...")
+    uvicorn.run(app, host=args.host, port=args.port)

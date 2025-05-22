@@ -5,77 +5,178 @@ from tools.summarize import summarize
 from tools.compare_sources import compare_sources
 from tools.report_generator import generate_report
 from tools.file_search import file_search
+from tools.mcp_api_loader import APIManager
+from dotenv import load_dotenv
 import os
-import logging
-from task_complexity import determine_reasoning_effort
+from datetime import datetime, date
+import calendar
 
-# Try to import load_dotenv but provide fallback if not available
-try:
-    from dotenv import load_dotenv
-except ImportError:
-    # Fallback implementation of load_dotenv
-    def load_dotenv(dotenv_path=None, stream=None, verbose=False, override=False):
-        """Load .env file manually if python-dotenv is not installed."""
-        if not dotenv_path:
-            dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
-        
-        if not os.path.exists(dotenv_path):
-            return False
-            
-        with open(dotenv_path) as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#') or '=' not in line:
-                    continue
-                key, value = line.split('=', 1)
-                if override or key not in os.environ:
-                    os.environ[key] = value
-                    
-        return True
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-# Load environment variables
+# Load environment variables from .env file
 load_dotenv()
 
-# Define improved agent instructions with explicit tool selection guidance
-INSTRUCTIONS = """
+def get_current_date_context():
+    """Generate current date context for agent instructions."""
+    now = datetime.now()
+    current_date = now.strftime("%B %d, %Y")
+    current_day = now.strftime("%A")
+    current_month = now.strftime("%B")
+    current_year = now.year
+    current_quarter = f"Q{(now.month-1)//3 + 1}"
+    
+    # Calculate fiscal year (assuming October 1 start)
+    if now.month >= 10:
+        fiscal_year = current_year + 1
+    else:
+        fiscal_year = current_year
+    
+    return {
+        "current_date": current_date,
+        "current_day": current_day,
+        "current_month": current_month,
+        "current_year": current_year,
+        "current_quarter": current_quarter,
+        "fiscal_year": fiscal_year,
+        "timestamp": now.isoformat()
+    }
+
+def select_model_for_task(query_type="general"):
+    """Select appropriate model based on task complexity."""
+    model_mapping = {
+        "financial": "gpt-4.1",      # Complex financial analysis
+        "research": "gpt-4.1",       # Deep research tasks
+        "summary": "gpt-4.1-mini",   # Simple summarization
+        "weather": "gpt-4.1-mini",   # Simple API calls
+        "general": "gpt-4.1"         # Default to full model
+    }
+    return model_mapping.get(query_type, "gpt-4.1")
+
+# Tool Selection Guidelines - Used to help agent select appropriate tools
+TOOL_SELECTION_GUIDE = """
+ENHANCED TOOL SELECTION GUIDELINES:
+
+PRIMARY SEARCH & RESEARCH:
+- For general research queries: Use TavilyAPI (AI-powered search, most comprehensive)
+- For specific news articles: Use NewsAPI (structured news data)
+- For global events monitoring: Use GDELTAPI (worldwide coverage)
+
+FINANCIAL & MARKET DATA:
+- For stock quotes/prices: Use MarketDataAPI or YahooFinanceAPI
+- For economic indicators: Use FredAPI (US data) or WorldBankAPI (global data)
+- For company filings: Use SECFilingsAPI
+- For industry analysis: Use IndustryReportsAPI
+
+SPECIFIC DATA TYPES:
+- For weather: Use WeatherAPI (NEVER use GDELT for weather!)
+- For company profiles: Use CompanyInfoAPI
+- For academic research: Use SemanticScholarAPI (if available)
+
+TOOL SELECTION LOGIC:
+1. Identify the query type first
+2. Choose the most specific tool available
+3. Use TavilyAPI as your primary research tool for complex queries
+4. Combine multiple tools for comprehensive analysis
+5. Always consider current date context for time-sensitive queries
+
+EXAMPLES:
+- "What's the weather in Chicago?" → WeatherAPI
+- "Latest Tesla earnings" → MarketDataAPI + TavilyAPI for analysis
+- "AI trends in healthcare" → TavilyAPI + IndustryReportsAPI
+- "Global GDP growth" → WorldBankAPI + FredAPI
+- "Breaking news today" → NewsAPI + TavilyAPI
+"""
+
+def get_agent(model="gpt-4.1", session_context=None, enable_reasoning=False, query=None):
+    """
+    Returns a configured Deep Research agent with:
+    - Research-focused instructions
+    - Model settings for consistency
+    - Tools for research capabilities
+    - Date awareness for financial queries
+    - Session memory capability
+    - Optional reasoning capabilities
+    """
+    
+    # Get current date context
+    date_context = get_current_date_context()
+    
+    # Build tools list based on model capabilities
+    if model in ["o3", "o4-mini", "o3-mini", "o3o", "gpt-4.1", "gpt-4.1-mini"]:
+        # o3 and 4.1 models support function tools
+        tools = [
+            summarize,
+            compare_sources,
+            generate_report,
+            file_search  # Add file search as function tool
+        ]
+    else:
+        tools = [
+            WebSearchTool(),
+            summarize,
+            compare_sources,
+            generate_report
+        ]
+        
+        # Add FileSearchTool if vector store ID is configured (for non-o3 models)
+        from tools.vector_search import get_file_search_tool
+        file_search_tool = get_file_search_tool()
+        if file_search_tool:
+            tools.append(file_search_tool)
+    
+    # Load MCP API tools if available
+    # Convert MCP tools to proper agent tool format
+    try:
+        mcp_path = os.getenv("MCP_CONFIG_PATH", "./consulting_brain_apis.mcp") 
+        if os.path.exists(mcp_path):
+            # Import the simple wrapper to bypass schema validation issues
+            from tools.simple_openai_wrapper import get_simple_openai_tools
+            wrapped_tools = get_simple_openai_tools(mcp_path)
+            tools.extend(wrapped_tools)
+            print(f"✅ Loaded {len(wrapped_tools)} MCP API tools from {mcp_path}")
+    except Exception as e:
+        print(f"⚠️ Failed to load MCP tools: {e}")
+        # Try the direct implementation as fallback
+        try:
+            from tools.mcp_api_loader import APIManager
+            api_manager = APIManager(mcp_path)
+            raw_tools = api_manager.get_tools()
+            print(f"✅ Loaded {len(raw_tools)} raw MCP tools as fallback")
+        except Exception as e2:
+            print(f"⚠️ Fallback also failed: {e2}")
+
+    # Build enhanced instructions with date awareness
+    date_aware_instructions = f"""
 You are a strategic advisor who helps business executives understand how technological and market trends actually impact their organizations. Your analysis should be immediately actionable in boardrooms and executive committees. You also provide general information when requested.
+
+CRITICAL CONTEXT - CURRENT DATE AND TIME:
+- Today is {date_context['current_date']} ({date_context['current_day']})
+- Current Quarter: {date_context['current_quarter']} {date_context['current_year']}
+- Current Fiscal Year: FY{date_context['fiscal_year']} (Oct-Sep cycle)
+- Timestamp: {date_context['timestamp']}
+
+When dealing with financial data, earnings, or time-sensitive information:
+- Always reference the current date and fiscal period
+- For "latest" or "recent" queries, use the current quarter as reference
+- For earnings data, check if we're in an earnings season (Jan, Apr, Jul, Oct)
+- Consider market hours (9:30 AM - 4:00 PM EST, Monday-Friday)
 
 CORE MISSION:
 Help executives answer: "So what does this mean for MY business?" Also answer general queries when asked.
 
 AVAILABLE TOOLS:
-You have access to tools to help with research, analysis, and summarization. Use these tools whenever relevant data would enhance your response.
-
-TOOL SELECTION RULES:
-- For weather queries: Use the weather_api tool with a location parameter
-- For document search: Use the file_search tool
-- For comparing information: Use the compare_sources tool
-- For generating reports: Use the generate_report tool
-- For summarizing long content: Use the summarize tool
-
-FINANCIAL DATA TOOLS:
-You have access to Financial Modeling Prep APIs for comprehensive financial data:
-- Use company_profile for basic company information 
-- Use income_statement, balance_sheet, and cash_flow for financial statement analysis
-- Use key_metrics and financial_ratios for performance evaluation
-- Use stock_price for current quotes and historical_price for price history
-- Use stock_news and market_news for market and company news
-
-When analyzing companies:
-1. Start with profile data to understand the business
-2. Examine financial statements for detailed analysis
-3. Use ratios and metrics for comparative evaluation
-4. Check stock price performance for market perspective
-5. Review recent news for qualitative context
-
-Always include the required 'symbol' parameter for company-specific data.
+{TOOL_SELECTION_GUIDE}
 
 DOCUMENT ACCESS:
 Use the file_search tool to access internal documents and reports when queries require specific company information or proprietary data. Always cite your sources using the provided citation format when referencing documents.
+
+CONVERSATION HISTORY & CONTEXT:
+{f"""
+IMPORTANT: You are continuing a conversation. Here's what we've discussed recently:
+
+{session_context}
+
+Pay close attention to this context. When the user says "they", "their", "it", "this company", etc., 
+refer back to the companies, topics, or subjects mentioned above.
+""" if session_context else "This is the start of a new research session."}
 
 YOUR ANALYTICAL FRAMEWORK:
 1. Impact on competitive dynamics
@@ -104,6 +205,7 @@ RESEARCH APPROACH:
 - Identify early warning signals
 - Consider second and third-order effects
 - Find the unspoken assumptions
+- Always consider the current date context for time-sensitive data
 
 EXECUTIVE-READY INSIGHTS:
 Frame everything in terms of:
@@ -125,6 +227,7 @@ AVOID:
 - Vendor hype and buzzwords
 - Academic abstractions
 - One-size-fits-all recommendations
+- Outdated information (always check dates)
 
 REMEMBER:
 Executives need to know:
@@ -135,145 +238,61 @@ Executives need to know:
 5. What happens if they don't
 
 Your job is to be the advisor who sees around corners and translates complexity into strategic clarity.
-"""
-
-def get_api_tools():
-    """
-    Load API tools from the tools directory.
-    This function serves as an extension point for adding new API integrations.
-    
-    Returns:
-        List of API tool functions compatible with OpenAI Agents SDK
-    """
-    api_tools = []
-    
-    # Import available API tools
-    try:
-        from tools.weather_api import weather_api
-        api_tools.append(weather_api)
-        logger.info("Added weather API tool")
-    except ImportError:
-        logger.warning("Weather API tool not available")
-    
-    # Import financial API tools
-    try:
-        from tools.financial_api import (
-            company_profile, income_statement, balance_sheet, cash_flow, 
-            key_metrics, financial_ratios, stock_price, historical_price,
-            stock_news, market_news
-        )
-        financial_tools = [
-            company_profile, income_statement, balance_sheet, cash_flow, 
-            key_metrics, financial_ratios, stock_price, historical_price,
-            stock_news, market_news
-        ]
-        api_tools.extend(financial_tools)
-        logger.info(f"Added {len(financial_tools)} financial API tools")
-    except ImportError:
-        logger.warning("Financial API tools not available")
-    
-    logger.info(f"Loaded {len(api_tools)} API tools total")
-    return api_tools
-
-def get_agent(model="gpt-4.1", enable_reasoning=False, query=""):
-    """
-    Returns a configured Deep Research agent with:
-    - Research-focused instructions
-    - Model settings for consistency
-    - Tools for research capabilities
-    - Optional reasoning capabilities (for compatible models)
-    
-    Args:
-        model (str): The model to use (e.g. "gpt-4.1", "o3", "o3-mini")
-        enable_reasoning (bool): Whether to enable reasoning features
-        query (str): The query to analyze for determining reasoning effort
-    """
-    # Determine which tools are compatible with this model
-    reasoning_models = ["o3", "o4-mini", "o3-mini", "o3o"]
-    is_reasoning_model = model in reasoning_models
-    
-    # For reasoning models, we need to be careful about which tools we include
-    # as some hosted tools are not supported with o3
-    if is_reasoning_model:
-        # Basic tools that are compatible with reasoning models
-        tools = [
-            summarize,
-            compare_sources,
-            generate_report
-            # No file_search for reasoning models, per API error
-        ]
-    else:
-        # Basic tools for non-reasoning models
-        tools = [
-            summarize,
-            compare_sources,
-            generate_report,
-            file_search  # Include file search for non-reasoning models
-        ]
-        
-        # Add vector search if configured (only for non-reasoning models)
-        if os.getenv("OPENAI_VECTOR_STORE_ID"):
-            try:
-                from tools.vector_search import get_file_search_tool
-                file_search_tool = get_file_search_tool()
-                if file_search_tool:
-                    tools.append(file_search_tool)
-                    logger.info("Added vector file search tool")
-            except Exception as e:
-                logger.warning(f"Failed to load vector search tool: {e}")
-
-    # Add API tools
-    try:
-        api_tools = get_api_tools()
-        if api_tools:
-            tools.extend(api_tools)
-            logger.info(f"Loaded {len(api_tools)} API tools successfully")
-    except Exception as e:
-        logger.warning(f"Failed to load API tools: {e}")
-    
-    # Determine if reasoning is supported by this model
-    reasoning_compatible_models = ["o3", "o4-mini", "o3-mini", "o3o", "gpt-4.1", "gpt-4.1-mini"]
-    can_use_reasoning = model in reasoning_compatible_models and enable_reasoning
-    
-    if can_use_reasoning:
-        logger.info(f"Enabling reasoning capabilities for model: {model}")
-    
-    # Set up model settings based on model type and reasoning preference
-    if model in reasoning_compatible_models:
-        # For reasoning-compatible models, we don't need to specify temperature and top_p
-        # as they'll be automatically optimized for reasoning capability
-        
-        # Use standard model settings but adjust for reasoning if needed
-        model_settings = ModelSettings(
-            max_tokens=16384,  # Large token limit for comprehensive responses
-        )
-        
-        # Set reasoning parameter when enabled (based on API documentation)
-        if enable_reasoning:
-            # For o3, reasoning effort parameter needs to be set as an object with effort property
-            # We'll use adaptive reasoning based on the task complexity
-            if query:
-                # Determine effort level based on query
-                effort = determine_reasoning_effort(query)
-                logger.info(f"Setting reasoning effort to '{effort}' based on query complexity")
-            else:
-                # Default to medium if no query is provided
-                effort = "medium"
-                logger.info(f"Setting reasoning effort to default '{effort}'")
-                
-            model_settings.reasoning = {"effort": effort}
-    else:
-        # For other models, use our standard settings
-        model_settings = ModelSettings(
-            max_tokens=16384,  # Large token limit for comprehensive responses
-            temperature=0.3,  # Claude works well with this temperature
-            top_p=0.9  # Keep reasonable top_p for quality
-        )
+        """
     
     return Agent(
         name="DeepResearcher",
-        instructions=INSTRUCTIONS,
+        instructions=date_aware_instructions,
+        # Using specified model
         model=model,
-        model_settings=model_settings,
+        # Configure model settings based on model type
+        model_settings=ModelSettings(
+            max_tokens=16384,  # Large token limit for comprehensive responses
+            temperature=0.3 if model not in ["o3", "o4-mini", "o3-mini", "o3o", "gpt-4.1", "gpt-4.1-mini"] else None,  # o3 and 4.1 models ignore temperature
+            top_p=0.9 if model not in ["o3", "o4-mini", "o3-mini", "o3o", "gpt-4.1", "gpt-4.1-mini"] else None  # o3 and 4.1 models ignore top_p
+        ),
+        # Include all research tools
         tools=tools
     )
+
+# Session management for memory
+class SessionManager:
+    """Manages conversation sessions with memory."""
+    
+    def __init__(self):
+        self.sessions = {}
+    
+    def get_session(self, session_id):
+        """Get or create a session."""
+        if session_id not in self.sessions:
+            self.sessions[session_id] = {
+                "history": [],
+                "context": "",
+                "created_at": datetime.now().isoformat()
+            }
+        return self.sessions[session_id]
+    
+    def add_to_session(self, session_id, query, response):
+        """Add query-response pair to session history."""
+        session = self.get_session(session_id)
+        session["history"].append({
+            "query": query,
+            "response": response,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        # Update context with recent conversation
+        recent_context = []
+        for item in session["history"][-3:]:  # Last 3 exchanges
+            recent_context.append(f"Q: {item['query'][:100]}...")
+            recent_context.append(f"A: {item['response'][:200]}...")
+        
+        session["context"] = "\n".join(recent_context)
+    
+    def get_session_context(self, session_id):
+        """Get session context for agent instructions."""
+        session = self.get_session(session_id)
+        return session.get("context", "")
+
+# Global session manager instance
+session_manager = SessionManager()
