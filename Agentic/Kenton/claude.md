@@ -3,6 +3,15 @@
 ## Overview
 The Kenton Deep Research Agent is a strategic research assistant built with OpenAI Agents SDK, designed to help business executives understand how technological and market trends impact their organizations.
 
+## Models Available (As of May 2025)
+The system uses the following OpenAI models (released after standard knowledge cutoffs):
+- **gpt-4.1**: Main reasoning model for complex analysis and strategic insights
+- **gpt-4.1-mini**: Lightweight model for simple queries and tool routing
+- **gpt-4o-mini**: Alternative lightweight model (as referenced in CLAUDE.md)
+- **text-embedding-3-large**: For vector search and semantic knowledge retrieval
+
+Note: Additional models like o1-preview and o3 series may be available but are not currently configured in the system.
+
 ## Architecture
 
 ### Core Components
