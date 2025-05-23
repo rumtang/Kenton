@@ -1,6 +1,6 @@
-# Agent configuration: Defines Agent name, instructions, reflection mode
+# Enhanced agent configuration with date awareness, session management, and improved tool selection
 
-from agents import Agent, ModelSettings, WebSearchTool
+from agents import Agent, ModelSettings, WebSearchTool, FileSearchTool
 from tools.summarize import summarize
 from tools.compare_sources import compare_sources
 from tools.report_generator import generate_report
@@ -50,42 +50,7 @@ def select_model_for_task(query_type="general"):
     }
     return model_mapping.get(query_type, "gpt-4.1")
 
-# Tool Selection Guidelines - Used to help agent select appropriate tools
-TOOL_SELECTION_GUIDE = """
-ENHANCED TOOL SELECTION GUIDELINES:
-
-PRIMARY SEARCH & RESEARCH:
-- For general research queries: Use TavilyAPI (AI-powered search, most comprehensive)
-- For specific news articles: Use NewsAPI (structured news data)
-- For global events monitoring: Use GDELTAPI (worldwide coverage)
-
-FINANCIAL & MARKET DATA:
-- For stock quotes/prices: Use MarketDataAPI or YahooFinanceAPI
-- For economic indicators: Use FredAPI (US data) or WorldBankAPI (global data)
-- For company filings: Use SECFilingsAPI
-- For industry analysis: Use IndustryReportsAPI
-
-SPECIFIC DATA TYPES:
-- For weather: Use WeatherAPI (NEVER use GDELT for weather!)
-- For company profiles: Use CompanyInfoAPI
-- For academic research: Use SemanticScholarAPI (if available)
-
-TOOL SELECTION LOGIC:
-1. Identify the query type first
-2. Choose the most specific tool available
-3. Use TavilyAPI as your primary research tool for complex queries
-4. Combine multiple tools for comprehensive analysis
-5. Always consider current date context for time-sensitive queries
-
-EXAMPLES:
-- "What's the weather in Chicago?" → WeatherAPI
-- "Latest Tesla earnings" → MarketDataAPI + TavilyAPI for analysis
-- "AI trends in healthcare" → TavilyAPI + IndustryReportsAPI
-- "Global GDP growth" → WorldBankAPI + FredAPI
-- "Breaking news today" → NewsAPI + TavilyAPI
-"""
-
-def get_agent(model="gpt-4.1", session_context=None, enable_reasoning=False, query=None):
+def get_agent(model="gpt-4.1", session_context=None, enable_reasoning=False):
     """
     Returns a configured Deep Research agent with:
     - Research-focused instructions
@@ -93,7 +58,7 @@ def get_agent(model="gpt-4.1", session_context=None, enable_reasoning=False, que
     - Tools for research capabilities
     - Date awareness for financial queries
     - Session memory capability
-    - Optional reasoning capabilities
+    - Enhanced tool selection
     """
     
     # Get current date context
@@ -122,28 +87,27 @@ def get_agent(model="gpt-4.1", session_context=None, enable_reasoning=False, que
         if file_search_tool:
             tools.append(file_search_tool)
     
-    # Load MCP API tools if available
-    # Convert MCP tools to proper agent tool format
+    # Load MCP API tools with enhanced wrapper
     try:
         mcp_path = os.getenv("MCP_CONFIG_PATH", "./consulting_brain_apis.mcp") 
         if os.path.exists(mcp_path):
-            # Import the simple wrapper to bypass schema validation issues
-            from tools.simple_openai_wrapper import get_simple_openai_tools
-            wrapped_tools = get_simple_openai_tools(mcp_path)
+            # Use enhanced MCP wrapper
+            from tools.enhanced_mcp_wrapper import get_enhanced_mcp_tools
+            wrapped_tools = get_enhanced_mcp_tools(mcp_path)
             tools.extend(wrapped_tools)
-            print(f"✅ Loaded {len(wrapped_tools)} MCP API tools from {mcp_path}")
+            print(f"✅ Loaded {len(wrapped_tools)} enhanced API tools from {mcp_path}")
     except Exception as e:
-        print(f"⚠️ Failed to load MCP tools: {e}")
-        # Try the direct implementation as fallback
+        print(f"⚠️ Failed to load enhanced MCP tools: {e}")
+        # Fallback to simple wrapper if enhanced fails
         try:
-            from tools.mcp_api_loader import APIManager
-            api_manager = APIManager(mcp_path)
-            raw_tools = api_manager.get_tools()
-            print(f"✅ Loaded {len(raw_tools)} raw MCP tools as fallback")
+            from tools.simple_mcp_wrapper import get_mcp_tools
+            wrapped_tools = get_mcp_tools(mcp_path)
+            tools.extend(wrapped_tools)
+            print(f"✅ Loaded {len(wrapped_tools)} API tools from {mcp_path} (fallback)")
         except Exception as e2:
-            print(f"⚠️ Fallback also failed: {e2}")
-
-    # Build enhanced instructions with date awareness
+            print(f"❌ Failed to load any MCP tools: {e2}")
+    
+    # Build enhanced instructions with date awareness and tool selection guidance
     date_aware_instructions = f"""
 You are a strategic advisor who helps business executives understand how technological and market trends actually impact their organizations. Your analysis should be immediately actionable in boardrooms and executive committees. You also provide general information when requested.
 
@@ -159,15 +123,6 @@ When dealing with financial data, earnings, or time-sensitive information:
 - For earnings data, check if we're in an earnings season (Jan, Apr, Jul, Oct)
 - Consider market hours (9:30 AM - 4:00 PM EST, Monday-Friday)
 
-CORE MISSION:
-Help executives answer: "So what does this mean for MY business?" Also answer general queries when asked.
-
-AVAILABLE TOOLS:
-{TOOL_SELECTION_GUIDE}
-
-DOCUMENT ACCESS:
-Use the file_search tool to access internal documents and reports when queries require specific company information or proprietary data. Always cite your sources using the provided citation format when referencing documents.
-
 CONVERSATION HISTORY & CONTEXT:
 {f"""
 IMPORTANT: You are continuing a conversation. Here's what we've discussed recently:
@@ -177,6 +132,57 @@ IMPORTANT: You are continuing a conversation. Here's what we've discussed recent
 Pay close attention to this context. When the user says "they", "their", "it", "this company", etc., 
 refer back to the companies, topics, or subjects mentioned above.
 """ if session_context else "This is the start of a new research session."}
+
+CORE MISSION:
+Help executives answer: "So what does this mean for MY business?" Also answer general queries when asked.
+
+AVAILABLE TOOLS:
+You have access to real-time data tools including weather APIs, news APIs, market data, and more. Use these tools whenever relevant data would enhance your response.
+
+CRITICAL TOOL SELECTION RULES:
+
+1. WEATHER QUERIES:
+   - For ANY weather question → ALWAYS use WeatherAPI tool
+   - Examples: "weather in [city]", "temperature", "forecast", "climate"
+   - Pass location as 'q' parameter: WeatherAPI(q="Chicago")
+   - NEVER use GDELT, News, or other tools for weather
+
+2. NEWS QUERIES:
+   - For news articles → Use NewsAPI or TavilyAPI
+   - For recent/breaking news → Prefer TavilyAPI (more current)
+   - For structured news data → Use NewsAPI
+   - Pass search term as 'q' parameter: NewsAPI(q="Tesla")
+
+3. FINANCIAL DATA:
+   - For stock prices/quotes → Use MarketDataAPI
+   - For company financials → Use YahooFinanceAPI
+   - For economic indicators → Use FredAPI or WorldBankAPI
+   - Always include current date context in financial analysis
+
+4. TOOL SELECTION PRIORITY:
+   - Match query type to most specific tool first
+   - Use TavilyAPI for general research and current events
+   - Always try the most direct tool before falling back to general search
+   - If a tool fails, explain the failure and try an alternative
+
+5. PARAMETER MAPPING:
+   - Weather: q="location name"
+   - News: q="search term" 
+   - Stocks: symbol="TICKER"
+   - Economic data: series_id, country, indicator as appropriate
+
+EXAMPLES OF CORRECT TOOL SELECTION:
+❌ WRONG: "What's the weather in NYC?" → Using GDELT or NewsAPI
+✅ CORRECT: "What's the weather in NYC?" → WeatherAPI(q="New York City")
+
+❌ WRONG: "Tesla news" → Using WeatherAPI
+✅ CORRECT: "Tesla news" → NewsAPI(q="Tesla") or TavilyAPI(query="Tesla news")
+
+❌ WRONG: "AAPL stock price" → Using NewsAPI
+✅ CORRECT: "AAPL stock price" → MarketDataAPI(symbol="AAPL")
+
+DOCUMENT ACCESS:
+Use the file_search tool to access internal documents and reports when queries require specific company information or proprietary data. Always cite your sources using the provided citation format when referencing documents.
 
 YOUR ANALYTICAL FRAMEWORK:
 1. Impact on competitive dynamics
@@ -281,11 +287,11 @@ class SessionManager:
             "timestamp": datetime.now().isoformat()
         })
         
-        # Update context with recent conversation
+        # Update context with recent conversation - enhanced for better memory
         recent_context = []
         for item in session["history"][-3:]:  # Last 3 exchanges
-            recent_context.append(f"Q: {item['query'][:100]}...")
-            recent_context.append(f"A: {item['response'][:200]}...")
+            recent_context.append(f"Q: {item['query']}")
+            recent_context.append(f"A: {item['response'][:300]}...")  # More context
         
         session["context"] = "\n".join(recent_context)
     

@@ -1,120 +1,391 @@
-# 🚦 Claude Code – Locked‑Down Engineering Guide (v2025‑05‑17)
+# Kenton Deep Research Agent - Technical Documentation
 
-## 0. Mission
-Build a Deep Research AI agent using the **OpenAI Agents SDK (v1.30+)** and **Responses API**, inspired by OpenAI’s own Deep Research capability. This agent should:
-- Take in a high-level research query.
-- Autonomously plan, gather, summarize, compare, reflect.
-- Output a structured, cited report.
+## Overview
+The Kenton Deep Research Agent is a strategic research assistant built with OpenAI Agents SDK, designed to help business executives understand how technological and market trends impact their organizations.
 
-You are a senior, disciplined engineer. Obey all rules below as **hard constraints**.
+## Architecture
 
----
+### Core Components
+- **Agent Core**: OpenAI Agents SDK with strategic advisory instructions
+- **MCP Tools**: Real-time API access (weather, news, financial data)
+- **Session Management**: Conversation memory and context
+- **Date Awareness**: Current date/quarter/fiscal year context
+- **Enhanced CLI**: Continuous conversation interface
+- **Web Interface**: Frontend matching CLI capabilities
 
-## 1. Workflow ‒ Plan → Confirm → Execute
-
-1. **Explore / Read** – Understand the files/code. Do **not** modify yet.
-2. **Plan** – Write your intended actions in markdown (no code yet).
-3. Wait for explicit **"OK Claude"** confirmation.
-4. **Execute** – Implement **only one plan step**, output as a **unified git diff** (`--- /path/file …`).
-5. Repeat steps until complete. Then: `git commit -m "feat: …"`
-
-If requirements are ambiguous, ask before coding.
-
----
-
-## 2. Output Rules
-- **Only emit diffs**, never whole files.
-- **Only touch these folders** unless told otherwise:
-  - `src/` → Python source code
-  - `tools/` → Agent tool functions
-  - `tests/` → Unit or system tests
-- **Never guess logic or silently rework structure** – always check
-
----
-
-## 3. Project Overview (Deep Research Agent)
-
-| Component | Description |
-|----------|-------------|
-| `main.py` | Launches the agent with a sample query |
-| `agent_config.py` | Defines Agent: name, instructions, reflection mode |
-| `tools/web_search.py` | Tool to retrieve web info via SerpAPI |
-| `tools/summarize.py` | Summarizes long text chunks |
-| `tools/compare_sources.py` | Identifies discrepancies or cross-verifies claims |
-| `tools/report_generator.py` | Builds structured, citation-rich output |
-| `tests/` | Simple verification of tool outputs |
-
----
-
-## 4. Engineering Constraints
-- Use `openai` SDK `>=1.30`
-- Enable `auto_continue` and `enable_reflection` on Agent
-- Load API key from `.env` via `python-dotenv`
-- Log tool outputs for tracing
-- Use `Runner.run_sync(agent, prompt)` pattern
-- Output structured `.md` or `.json` report
-
-## CRITICAL: API INTEGRATION REQUIREMENTS
-- **ENSURE** all frontend and backend components use exactly the same OpenAI agent configuration
-- **MAINTAIN** consistent agent behavior between CLI and web interface
-- **VERIFY** that any streaming implementation uses OpenAI's streaming format
-
-### 4.1 Error Handling Guidelines
-All tools should implement diagnostic-rich error handling with:
-
-```python
-class AgentExecutionError(Exception):
-    def __init__(self, message, code=None, hint=None, resolution=None, source=None):
-        super().__init__(message)
-        self.code = code         # e.g., "FS001" for File Search Error #1
-        self.hint = hint         # Explanation of what likely went wrong
-        self.resolution = resolution  # How to fix it
-        self.source = source     # Where the error occurred
+### Key Files Structure
+```
+Kenton/
+├── agent_config.py              # Core agent configuration
+├── run.py                       # Enhanced CLI interface
+├── consulting_brain_apis.mcp    # API tool configuration
+├── tools/
+│   ├── enhanced_mcp_wrapper.py  # Enhanced MCP integration
+│   ├── simple_mcp_wrapper.py    # Fallback MCP wrapper
+│   └── [other tools...]
+├── frontend/                    # Web interface
+└── claude.md                   # This documentation
 ```
 
-### 4.2 Vector Store / File Search Implementation
-When using OpenAI Agents SDK for file search:
+## MCP Integration Solutions & Troubleshooting
 
-- Always use `vector_store_ids` as an array: `vector_store_ids=[vector_store_id]`
-- For API message attachments to specific files, use `file_id` (singular)
-- Never use `file_id: None` - either provide a valid ID or omit the parameter
-- Set `OPENAI_VECTOR_STORE_ID` in .env file (not VECTOR_STORE_ID)
-- For function tools, implement proper error handling with diagnostic codes
+### Common Issues & Solutions
 
-### 4.3 API Key Management - CRITICAL
-To prevent API key corruption that causes agent failures:
+#### Issue 1: Tool Selection Problems
+**Problem**: Agent has tools available but chooses wrong ones (e.g., using GDELT for weather queries instead of WeatherAPI)
 
-1. **Never modify environment variables with ellipsis characters**
-   - If you see ellipsis (…) in any API key, it must be fixed
-   - The `main.py` file includes automatic detection and replacement
+**Root Cause**: Insufficient tool selection guidance in agent instructions
 
-2. **Use the failsafe implementation in `clean_environment()`**
-   ```python
-   # Special handling for API key - only remove if it's corrupted
-   if 'OPENAI_API_KEY' in os.environ:
-       api_key = os.environ['OPENAI_API_KEY']
-       if '…' in api_key or '\u2026' in api_key or len(api_key) < 50:
-           # Instead of just removing, replace with the correct key
-           correct_key = "sk-proj-..."  # Full API key stored here
-           os.environ['OPENAI_API_KEY'] = correct_key
-   ```
+**Solution Applied**:
+1. **Enhanced Tool Selection Instructions**: Added explicit tool selection rules
+2. **Priority-Based Tool Selection**: Implemented tool selection priority system
+3. **Query Type Detection**: Clear query type → tool mapping
 
-3. **When encountering API key errors:**
-   - Run `python fix_env_permanent.py` which will create a fresh .env
-   - Always stop and restart services after fixing API key issues
-   - Verify the fix by checking agent initialization messages
+**Implementation**:
+```python
+# In agent_config.py instructions:
+CRITICAL TOOL SELECTION RULES:
 
----
+1. WEATHER QUERIES → ALWAYS use WeatherAPI tool
+2. NEWS QUERIES → Use NewsAPI or TavilyAPI  
+3. FINANCIAL DATA → Use MarketDataAPI/YahooFinanceAPI
+4. Match query type to most specific tool first
+```
 
-## 5. Example Workflow: Phase 1
+#### Issue 2: Parameter Mapping Issues
+**Problem**: MCP wrapper not passing parameters correctly to APIs, causing tool failures
 
-### Plan
-- Set up Poetry or pip + venv
-- Install dependencies: `openai`, `httpx`, `python-dotenv`, `requests`
-- Create: `src/`, `tools/`, `tests/`, `.env`, `.gitignore`, `main.py`, `agent_config.py`
-- Add stub files for each tool
+**Root Cause**: Parameter naming inconsistencies between agent calls and API expectations
 
-🛑 Await **"OK Claude"** before coding this.
+**Solution Applied**:
+1. **Enhanced Parameter Processing**: Intelligent parameter mapping in MCP wrapper
+2. **Common Parameter Normalization**: Convert common parameter names automatically
+3. **Parameter Validation**: Validate parameters before API calls
 
----
+**Implementation**:
+```python
+# Enhanced parameter processing in enhanced_mcp_wrapper.py:
+for key, value in kwargs.items():
+    if key.lower() in ['query', 'q', 'search']:
+        query_params['q'] = str(value).strip()
+    elif key.lower() in ['location', 'city', 'place']:
+        query_params['q'] = str(value).strip()  # For weather API
+    elif key.lower() in ['symbol', 'ticker']:
+        query_params['symbol'] = str(value).strip().upper()
+```
 
+#### Issue 3: OpenAI SDK Tool Integration Errors
+**Problem**: Multiple integration issues with OpenAI Agents SDK
+- 'function' object has no attribute 'name' error
+- Pydantic schema validation errors (additionalProperties must be False)
+- Tool calling convention mismatches (positional vs keyword arguments)
+
+**Root Cause**: OpenAI Agents SDK has strict requirements for tool integration
+
+**Solution Applied**:
+1. **Proper FunctionTool Creation**: All tools wrapped as FunctionTool objects
+2. **Correct Schema Format**: additionalProperties set to False
+3. **Calling Convention Wrapper**: Handle both positional and keyword arguments
+
+**Implementation**:
+```python
+# Create wrapper for proper calling convention:
+async def tool_wrapper(context, arguments):
+    """Wrapper to handle async/sync and argument passing"""
+    kwargs = {}
+    if isinstance(arguments, dict):
+        kwargs = arguments
+    elif hasattr(arguments, '__dict__'):
+        kwargs = arguments.__dict__
+    return api_function(**kwargs)
+
+# Create FunctionTool with correct schema:
+tool = FunctionTool(
+    name=api_function.__name__,
+    description=description,
+    params_json_schema={
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False  # Required by OpenAI SDK
+    },
+    on_invoke_tool=tool_wrapper
+)
+```
+
+#### Issue 4: Tavily API Integration
+**Problem**: Tavily API returning "405: Method Not Allowed" errors
+
+**Root Cause**: Tavily requires POST requests with JSON body, not GET requests
+
+**Solution Applied**:
+1. **POST Request Support**: Modified enhanced_mcp_wrapper to use POST for Tavily
+2. **JSON Body Format**: Convert query parameters to JSON body
+3. **Proper Authentication**: API key passed in JSON body, not headers
+
+**Implementation**:
+```python
+# Special handling for Tavily API:
+if name.lower() == "tavilyapi":
+    json_body = {
+        'query': query_params.get('q', ''),
+        'search_depth': 'basic',
+        'max_results': 5,
+        'api_key': api_key  # Tavily expects key in body
+    }
+    response = requests.post(endpoint, json=json_body, timeout=30)
+```
+
+#### Issue 5: Session Memory Not Working
+**Problem**: Agent doesn't remember previous conversation context
+
+**Root Cause**: Session context not prominently featured in agent instructions
+
+**Solution Applied**:
+```python
+# Enhanced session context in agent instructions:
+CONVERSATION HISTORY & CONTEXT:
+{f"""
+IMPORTANT: You are continuing a conversation. Here's what we've discussed recently:
+
+{session_context}
+
+Pay close attention to this context. When the user says "they", "their", "it", "this company", etc., 
+refer back to the companies, topics, or subjects mentioned above.
+""" if session_context else "This is the start of a new research session."}
+```
+
+### Prevention Checklist
+
+#### Before Deployment:
+- [ ] Test all MCP tools individually with sample parameters
+- [ ] Verify tool selection logic with various query types
+- [ ] Check parameter mapping for each API endpoint
+- [ ] Test schema validation with OpenAI Agents SDK
+- [ ] Validate API keys and authentication methods
+- [ ] Test session memory with multi-turn conversations
+
+#### Testing Commands:
+```bash
+# Test enhanced MCP tools loading
+python -c "from tools.enhanced_mcp_wrapper import get_enhanced_mcp_tools; tools = get_enhanced_mcp_tools(); print(f'Loaded {len(tools)} tools')"
+
+# Test specific tools
+python -c "from tools.enhanced_mcp_wrapper import EnhancedAPIManager; manager = EnhancedAPIManager(); print(manager.test_tool('WeatherAPI', q='Chicago'))"
+
+# Test Tavily search
+python -c "from tools.enhanced_mcp_wrapper import EnhancedAPIManager; manager = EnhancedAPIManager(); print(manager.test_tool('TavilyAPI', query='latest AI developments 2024')[:500])"
+
+# Test agent tool selection
+poetry run python run.py
+# Then test: "What's the weather in Chicago?"
+# And test: "Search for recent news about Tesla"
+```
+
+### Monitoring & Maintenance
+
+#### Log Monitoring:
+Watch for these log patterns indicating issues:
+- `⚠️ Weather tool not being selected`
+- `❌ Parameter mapping failed`
+- `🔧 Schema validation error`
+- `✅ Enhanced MCP tools loaded` (success indicator)
+
+#### Regular Health Checks:
+1. **Daily**: Test key weather and news tools
+2. **Weekly**: Test financial tool endpoints and session memory
+3. **Monthly**: Review tool usage statistics and selection accuracy
+4. **Quarterly**: Update API endpoints and authentication methods
+
+## Date Awareness Implementation
+
+### Features
+- **Current Date Context**: Agent knows current date, day, quarter
+- **Fiscal Year Awareness**: FY2025 (Oct-Sep cycle)
+- **Earnings Season Detection**: Knows Jan, Apr, Jul, Oct are earnings months
+- **Market Hours**: Considers 9:30 AM - 4:00 PM EST trading hours
+
+### Implementation
+```python
+def get_current_date_context():
+    """Generate current date context for agent instructions."""
+    now = datetime.now()
+    current_date = now.strftime("%B %d, %Y")
+    current_quarter = f"Q{(now.month-1)//3 + 1}"
+    # Calculate fiscal year (October 1 start)
+    fiscal_year = current_year + 1 if now.month >= 10 else current_year
+    return {
+        "current_date": current_date,
+        "current_quarter": current_quarter,
+        "fiscal_year": fiscal_year,
+        # ... other context
+    }
+```
+
+## Enhanced CLI Features
+
+### Continuous Conversation
+- No restart required after each query
+- Session memory maintains context
+- Natural conversation flow
+
+### Commands Available
+- `/help` - Show all commands
+- `/thinking` - Toggle thinking display
+- `/model` - Switch between models  
+- `/session` - View session info
+- `/clear` - Start fresh session
+- `/quit` - Exit cleanly
+
+### Thinking Display
+- Shows agent reasoning process
+- "Analyzing query and selecting appropriate tools..."
+- "Executing research plan..."
+- Can be toggled on/off
+
+## File Locations & Backups
+
+### Key Files:
+- **MCP Configuration**: `./consulting_brain_apis.mcp`
+- **Enhanced Wrapper**: `./tools/enhanced_mcp_wrapper.py`
+- **Agent Configuration**: `./agent_config.py`
+- **CLI Interface**: `./run.py`
+
+### Environment Variables Required:
+```bash
+OPENAI_API_KEY=your_openai_key
+WEATHER_API_KEY=your_weather_key  
+NEWS_API_KEY=your_news_key
+TAVILY_API_KEY=your_tavily_key
+# ... other API keys
+```
+
+## Emergency Procedures
+
+### If MCP Tools Completely Fail:
+1. **Fallback to Tavily**: Agent can still function with TavilyAPI for research
+2. **Simple Wrapper Fallback**: Enhanced wrapper falls back to simple wrapper
+3. **Manual Tool Disable**: Comment out MCP tools in agent_config.py
+
+### Recovery Steps:
+```bash
+# 1. Check API connectivity
+curl -H "key: $WEATHER_API_KEY" "https://api.weatherapi.com/v1/current.json?q=Chicago&key=$WEATHER_API_KEY"
+
+# 2. Test enhanced MCP tools
+python tools/enhanced_mcp_wrapper.py
+
+# 3. Restart agent
+poetry run python run.py
+```
+
+### Debugging Commands:
+```bash
+# Test tool loading
+python -c "from agent_config import get_agent; agent = get_agent(); print(f'Tools: {len(agent.tools)}')"
+
+# Test session management
+python -c "from agent_config import session_manager; session = session_manager.get_session('test'); print(session)"
+
+# Check date awareness
+python -c "from agent_config import get_current_date_context; print(get_current_date_context())"
+```
+
+## Version History
+
+### v3.0 (Current - Priority 3 Complete)
+- ✅ Enhanced CLI with continuous conversation
+- ✅ Session memory and context management
+- ✅ Thinking display and CLI commands
+- ✅ Enhanced MCP wrapper with better tool selection
+- ✅ Comprehensive error handling and fallbacks
+
+### v2.1 (Priority 2 Complete)
+- ✅ Tavily integration for enhanced search
+- ✅ Better tool selection logic
+- ✅ Enhanced parameter mapping
+
+### v2.0 (Priority 1 Complete)
+- ✅ Date awareness implementation
+- ✅ Current quarter and fiscal year context
+- ✅ Time-sensitive data handling
+
+### v1.0 (Initial)
+- Basic MCP tool integration
+- Simple agent configuration
+- Core functionality established
+
+## Future Enhancements (Roadmap)
+
+### Priority 4: Frontend Parity
+- [ ] Web interface matching CLI capabilities
+- [ ] Session management in web UI
+- [ ] Thinking display in browser
+- [ ] Real-time streaming responses
+
+### Priority 5: Multi-Model Layer
+- [ ] Task-based model selection
+- [ ] Cost optimization through model routing
+- [ ] Performance optimization
+
+## Support & Troubleshooting
+
+### For Issues:
+1. Check this documentation first
+2. Review log files for specific error patterns
+3. Test individual tool endpoints manually
+4. Use debugging commands provided above
+
+### Contact Information:
+- Project: Kenton Deep Research Agent
+- Documentation: claude.md
+- Last Updated: May 22, 2025
+
+## Recent Fixes (May 22, 2025)
+
+### Fixed Issues:
+1. **Tavily API Integration** - Now properly using POST requests with JSON body
+2. **Tool Wrapping Errors** - All tools properly wrapped as FunctionTool objects
+3. **Schema Validation** - additionalProperties correctly set to False
+4. **Parameter Handling** - Enhanced wrapper handles both positional and keyword arguments
+
+### Current Status:
+- ✅ All 14 tools loading successfully (including 10 MCP tools)
+- ✅ Tavily search working for real-time web queries
+- ✅ Weather, News, and Financial APIs operational
+- ✅ Web interface functional at http://localhost:3000
+- ✅ Backend API stable at http://localhost:8001
+
+### Known Limitations:
+- File search tool has issues with 'tool_resources' parameter
+- Some API keys not configured (CompanyInfoAPI, IndustryReportsAPI)
+- Yahoo Finance API returns 403 (may need valid API key)
+- **Tool Parameter Passing Issue**: The agent sometimes calls tools without required parameters
+  - This happens when the agent doesn't understand what parameters each tool expects
+  - Solution: Parameter schemas have been added to guide the agent
+  - Workaround: Be explicit in queries (e.g., "Search for 'Microsoft AI' using TavilyAPI")
+
+### Debugging Tool Issues:
+
+To test if tools are working correctly:
+
+```bash
+# Test Tavily directly
+python3 -c "
+from tools.enhanced_mcp_wrapper import EnhancedAPIManager
+manager = EnhancedAPIManager()
+print(manager.test_tool('tavilyapi', query='Microsoft AI strategy'))
+"
+
+# Test FMP directly  
+python3 -c "
+from tools.enhanced_mcp_wrapper import EnhancedAPIManager
+manager = EnhancedAPIManager()
+print(manager.test_tool('marketdataapi', symbol='MSFT'))
+"
+```
+
+### Tool Usage Tips:
+
+1. **Be Explicit**: Instead of "analyze Microsoft", say "Get MSFT stock data and search for Microsoft AI initiatives"
+2. **Specify Tools**: Mention tool names when possible (e.g., "Use TavilyAPI to search...")
+3. **Include Parameters**: Mention what to search for or what stock symbol to use

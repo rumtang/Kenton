@@ -5,7 +5,7 @@
 name = Tavily Search API
 endpoint = https://api.tavily.com/search
 auth = TAVILY_API_KEY
-auth_type = Bearer
+auth_type = json-api_key
 use_cases = Advanced AI-powered web search for research, news, and real-time information
 description = Tavily AI search API for comprehensive research and current information retrieval
 parameters = query:string:required,search_depth:string:optional,max_results:integer:optional
