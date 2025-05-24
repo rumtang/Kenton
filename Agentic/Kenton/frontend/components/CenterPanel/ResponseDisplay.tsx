@@ -79,12 +79,14 @@ export function ResponseDisplay({ content, isStreaming = false, onEnhancePrompt,
   }, [displayedContent, isStreaming]);
 
   const handleCopy = async (text: string, index?: number) => {
-    await navigator.clipboard.writeText(text);
-    if (index !== undefined) {
-      setCopiedStates({ ...copiedStates, [index]: true });
-      setTimeout(() => {
-        setCopiedStates({ ...copiedStates, [index]: false });
-      }, 2000);
+    if (typeof window !== 'undefined' && navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      if (index !== undefined) {
+        setCopiedStates({ ...copiedStates, [index]: true });
+        setTimeout(() => {
+          setCopiedStates({ ...copiedStates, [index]: false });
+        }, 2000);
+      }
     }
   };
 
@@ -160,7 +162,8 @@ export function ResponseDisplay({ content, isStreaming = false, onEnhancePrompt,
         >
           <ReactMarkdown
             components={{
-              code({ node, inline, className, children, ...props }) {
+              code({ node, className, children, ...props }: any) {
+                const inline = node?.tagName !== 'pre';
                 const match = /language-(\w+)/.exec(className || '');
                 const codeString = String(children).replace(/\n$/, '');
                 
