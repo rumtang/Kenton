@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Forward the request to the backend API
-    const backendUrl = 'http://localhost:8001/api/research';
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8001/api/research';
     console.log(`Sending request to backend: ${backendUrl}`);
     console.log(`Session ID: ${sessionId}, Model: ${model}`);
     

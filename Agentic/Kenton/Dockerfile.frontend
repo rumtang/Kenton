@@ -26,11 +26,11 @@ COPY --from=builder /app/frontend/.next/static ./.next/static
 COPY --from=builder /app/frontend/public ./public
 
 # Set environment variables
-ENV PORT=3000
 ENV NODE_ENV=production
+ENV HOSTNAME=0.0.0.0
 
-# Expose port
-EXPOSE 3000
+# Expose port 8080 (Cloud Run default)
+EXPOSE 8080
 
-# Run the Next.js server
+# Run the Next.js server - it should respect PORT env var
 CMD ["node", "server.js"]
