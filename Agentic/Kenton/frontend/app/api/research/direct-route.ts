@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { query, model = 'gpt-4.1' } = body;
+    const { query, model = 'gpt-4.1', sessionId, includeIntelligence = true } = body;
 
     if (!query || typeof query !== 'string') {
       return new Response(
@@ -21,6 +21,7 @@ export async function POST(request: NextRequest) {
     // Forward the request to the backend API
     const backendUrl = 'http://localhost:8001/api/research';
     console.log(`Sending request to backend: ${backendUrl}`);
+    console.log(`Session ID: ${sessionId}, Model: ${model}`);
     
     // Add timeout to avoid hanging forever
     const controller = new AbortController();
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ query, model }),
+        body: JSON.stringify({ query, model, sessionId, includeIntelligence }),
         signal: controller.signal
       });
       
