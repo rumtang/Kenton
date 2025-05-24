@@ -28,9 +28,10 @@ COPY --from=builder /app/frontend/public ./public
 # Set environment variables
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
+ENV PORT=8080
 
 # Expose port 8080 (Cloud Run default)
 EXPOSE 8080
 
-# Run the Next.js server - it should respect PORT env var
+# Next.js standalone already includes a server.js that respects HOSTNAME and PORT
 CMD ["node", "server.js"]
