@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 API server for Deep Research Agent with improved error handling and diagnostics.
-Provides streaming responses and comprehensive health checks.
+Provides streaming responses, comprehensive health checks, and conversation memory.
 """
 
 import os
@@ -15,6 +15,7 @@ import uvicorn
 import json
 import asyncio
 import logging
+import uuid
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -48,169 +49,348 @@ if "OPENAI_API_KEY" in os.environ:
         logger.info(f"Removing corrupted OPENAI_API_KEY")
         del os.environ["OPENAI_API_KEY"]
 
-# Load environment from .env file
+# Load environment variables AFTER cleanup
 from dotenv import load_dotenv
-load_dotenv(env_file, override=True)
+logger.info(f"Loading .env from: {env_file}")
+load_result = load_dotenv(dotenv_path=env_file, override=True)
+logger.info(f"Load .env result: {load_result}")
 
-# Verify we have a valid API key
-api_key = os.getenv("OPENAI_API_KEY", "")
+# Import conversation manager
+try:
+    from conversation_manager import get_conversation_manager
+    conversation_manager = get_conversation_manager()
+    logger.info("Conversation manager initialized")
+except Exception as e:
+    logger.warning(f"Could not initialize conversation manager: {e}")
+    conversation_manager = None
 
-# Check for valid API key formats:
-# 1. Standard keys (start with 'sk-' and are ~51 chars)
-# 2. Project-scoped keys (start with 'sk-proj-' and can be longer)
-is_valid_key = (
-    (api_key.startswith("sk-") and len(api_key) >= 40) or
-    (api_key.startswith("sk-proj-") and len(api_key) >= 60)
-)
-
-if not api_key or not is_valid_key:
-    logger.error(f"ERROR: Invalid OPENAI_API_KEY loaded (format or length issue, length: {len(api_key)})")
+# Now check for required environment variable
+api_key = os.getenv("OPENAI_API_KEY")
+if not api_key:
+    logger.error("ERROR: OPENAI_API_KEY not found in environment after loading .env")
     sys.exit(1)
 
-logger.info(f"Using API key from .env: {api_key[:15]}... (verified length: {len(api_key)})")
+# Validate API key format
+if not api_key.startswith("sk-"):
+    logger.error(f"ERROR: Invalid OPENAI_API_KEY format")
+    sys.exit(1)
 
-# Import after environment is set up
-from agent_config import get_agent
-from agents import Runner
+logger.info(f"OPENAI_API_KEY loaded: {api_key[:15]}...{api_key[-4:]}")
 
-app = FastAPI(title="Research Agent API")
+# Import the agent config
+try:
+    from agent_config import get_agent, SessionManager
+    from tools.enhanced_mcp_wrapper import get_enhanced_mcp_tools
+    from tools.tavily_search import tavily_search
+    
+    # Create session manager instance
+    session_manager = SessionManager()
+    
+    logger.info("Successfully imported agent_config and tools")
+except ImportError as e:
+    logger.error(f"Failed to import agent_config or tools: {e}")
+    sys.exit(1)
 
-# Configure CORS
+app = FastAPI()
+
+def generate_session_id():
+    """Generate a unique session ID."""
+    return f"session_{uuid.uuid4().hex[:12]}_{int(asyncio.get_event_loop().time())}"
+
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"],
+    allow_origins=["http://localhost:3000", "http://localhost:3001"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-class ResearchQuery(BaseModel):
+class ResearchRequest(BaseModel):
     query: str
-    model: str = "gpt-4.1"  # Default model
-    enable_reasoning: bool = False  # Enable reasoning capabilities if model supports it
+    sessionId: str = None
+    includeIntelligence: bool = True
+    model: str = "gpt-4.1"
+
+class HealthResponse(BaseModel):
+    status: str
+    tools_count: int
+    agent_ready: bool
+    api_key_status: str
+    enhanced_mcp_status: str
+    tavily_status: str
+    memory_status: str
+
+@app.get("/health", response_model=HealthResponse)
+async def health_check():
+    """Health check endpoint with detailed status information."""
+    try:
+        # Get tools status
+        enhanced_mcp_tools = []
+        enhanced_mcp_status = "not loaded"
+        try:
+            mcp_path = os.getenv("MCP_CONFIG_PATH", "./consulting_brain_apis.mcp")
+            enhanced_mcp_tools = get_enhanced_mcp_tools(mcp_path)
+            enhanced_mcp_status = f"loaded ({len(enhanced_mcp_tools)} tools)"
+        except Exception as e:
+            enhanced_mcp_status = f"error: {str(e)}"
+        
+        # Get tavily status
+        tavily_status = "not loaded"
+        try:
+            # Check if Tavily API key is configured
+            tavily_key = os.getenv("TAVILY_API_KEY", "")
+            tavily_status = "loaded" if tavily_key else "no API key"
+        except Exception as e:
+            tavily_status = f"error: {str(e)}"
+        
+        # Get memory status
+        memory_status = "not available"
+        if conversation_manager:
+            memory_status = "redis" if conversation_manager.use_redis else "in-memory"
+        
+        # Try to create an agent
+        agent_ready = False
+        try:
+            agent = get_agent()
+            agent_ready = agent is not None
+        except Exception as e:
+            logger.error(f"Failed to create agent in health check: {e}")
+        
+        # Check API key
+        api_key = os.getenv("OPENAI_API_KEY", "")
+        api_key_status = "not set"
+        if api_key:
+            if api_key.startswith("sk-"):
+                api_key_status = f"valid format ({api_key[:15]}...)"
+            else:
+                api_key_status = "invalid format"
+        
+        return HealthResponse(
+            status="healthy",
+            tools_count=len(enhanced_mcp_tools),
+            agent_ready=agent_ready,
+            api_key_status=api_key_status,
+            enhanced_mcp_status=enhanced_mcp_status,
+            tavily_status=tavily_status,
+            memory_status=memory_status
+        )
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return HealthResponse(
+            status="unhealthy",
+            tools_count=0,
+            agent_ready=False,
+            api_key_status="error",
+            enhanced_mcp_status="error",
+            tavily_status="error",
+            memory_status="error"
+        )
 
 @app.post("/api/research")
-async def research(request: ResearchQuery):
-    """Process a research query with enhanced debugging"""
-    async def generate():
-        try:
-            # Initialize agent with model and reasoning if enabled
-            # Pass the query to determine appropriate reasoning effort level
-            logger.info(f"Initializing agent with {request.model}, reasoning: {request.enable_reasoning}...")
-            agent = get_agent(model=request.model, enable_reasoning=request.enable_reasoning, query=request.query)
-            
-            # Log available tools
-            logger.info(f"Agent has {len(agent.tools)} tools available")
-            for i, tool in enumerate(agent.tools):
-                tool_name = getattr(tool, '__name__', getattr(tool, 'name', str(tool)))
-                logger.info(f"  Tool {i+1}: {tool_name}")
-            
-            # Include reasoning status in initialization message
-            reasoning_status = "with reasoning enabled" if request.enable_reasoning else "standard mode"
-            yield f"data: {json.dumps({'type': 'status', 'message': f'Starting research ({reasoning_status})...'})}\n\n"
-            
-            # Run the agent
-            logger.info(f"Running query: {request.query}")
-            result = await Runner.run(agent, request.query)
-            
-            # Extract the final output
-            if hasattr(result, 'final_output'):
-                content = result.final_output
-            elif hasattr(result, 'content'):
-                content = result.content
-            else:
-                content = str(result)
-            
-            logger.info(f"Got result: {content[:100]}...")
-            
-            # Extract reasoning trace if available and enabled
-            reasoning_trace = None
-            if request.enable_reasoning:
-                # Check various property names that might contain reasoning
-                for attr in ['reasoning_trace', 'reasoning', 'trace']:
-                    if hasattr(result, attr) and getattr(result, attr):
-                        reasoning_value = getattr(result, attr)
-                        # Handle case where reasoning is an object with content
-                        if isinstance(reasoning_value, dict) and 'content' in reasoning_value:
-                            reasoning_trace = reasoning_value['content']
-                        else:
-                            reasoning_trace = str(reasoning_value)
-                        break
-                        
-                logger.info(f"Reasoning trace available: {len(reasoning_trace) if reasoning_trace else 0} characters")
-                
-                if reasoning_trace:
-                    # Stream reasoning trace in smaller chunks first
-                    yield f"data: {json.dumps({'type': 'reasoning_start'})}\n\n"
-                    
-                    # Stream reasoning trace in chunks
-                    reasoning_chunk_size = 100
-                    for i in range(0, len(reasoning_trace), reasoning_chunk_size):
-                        chunk = reasoning_trace[i:i+reasoning_chunk_size]
-                        yield f"data: {json.dumps({'type': 'reasoning', 'data': chunk})}\n\n"
-                        await asyncio.sleep(0.01)  # Small delay for streaming effect
-                    
-                    yield f"data: {json.dumps({'type': 'reasoning_end'})}\n\n"
-            
-            # Stream the actual content in chunks
-            chunk_size = 100
-            for i in range(0, len(content), chunk_size):
-                chunk = content[i:i+chunk_size]
-                yield f"data: {json.dumps({'type': 'content', 'data': chunk})}\n\n"
-                await asyncio.sleep(0.01)  # Small delay for streaming effect
-            
-            # Include reasoning info in the completion message
-            completion_data = {
-                'type': 'complete',
-                'reasoning_available': reasoning_trace is not None
-            }
-            yield f"data: {json.dumps(completion_data)}\n\n"
-            
-        except Exception as e:
-            import traceback
-            error_detail = traceback.format_exc()
-            logger.error(f"Error: {e}")
-            logger.error(error_detail)
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-    
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-        }
-    )
-
-@app.get("/api/health")
-async def health():
-    """Provides health status and available tools"""
+async def research(request: ResearchRequest):
+    """Main research endpoint with conversation memory support."""
     try:
-        agent = get_agent(model="gpt-4.1")
-        tool_count = len(agent.tools)
-        tool_names = [getattr(tool, '__name__', str(tool)) for tool in agent.tools]
+        logger.info(f"Research request received: {request.query[:50]}...")
+        logger.info(f"Session ID: {request.sessionId}, Model: {request.model}")
         
-        # List models with reasoning support
-        reasoning_compatible_models = ["o3", "o4-mini", "o3-mini", "o3o", "gpt-4.1", "gpt-4.1-mini"]
+        # Use provided session ID or generate new one
+        session_id = request.sessionId or generate_session_id()
+        
+        # Get conversation history if memory is available
+        conversation_context = ""
+        if conversation_manager and session_id:
+            try:
+                history = conversation_manager.get_formatted_history(session_id, limit=5)
+                if history:
+                    conversation_context = f"""
+=== Previous Conversation Context ===
+{history}
+=== End of Context ===
+
+"""
+                    logger.info(f"Loaded {len(history.split('\\n'))} lines of conversation history")
+            except Exception as e:
+                logger.warning(f"Could not load conversation history: {e}")
+        
+        # Prepare the query with context
+        full_query = conversation_context + request.query
+        
+        # Create a new agent instance
+        agent = get_agent(model=request.model)
+        if not agent:
+            raise HTTPException(status_code=500, detail="Failed to create agent")
+        
+        logger.info(f"Agent created with {len(agent.tools)} tools for model {request.model}")
+        
+        # Stream the response
+        async def generate():
+            start_time = asyncio.get_event_loop().time()
+            full_response = ""
+            tools_called = []
+            thinking_steps = []
+            
+            try:
+                # Process with the agent
+                from agents import Runner
+                
+                # Define message handler
+                def message_handler(msg_type, content):
+                    nonlocal full_response, tools_called, thinking_steps
+                    
+                    if msg_type == "content":
+                        full_response += content
+                        # Stream content
+                        data = {"type": "content", "content": content}
+                        return f"data: {json.dumps(data)}\n\n"
+                    elif msg_type == "thinking":
+                        thinking_steps.append(content)
+                        # Stream thinking step
+                        data = {"type": "thinking", "content": content}
+                        return f"data: {json.dumps(data)}\n\n"
+                    elif msg_type == "tool":
+                        tools_called.append(content)
+                        # Stream tool usage
+                        data = {"type": "tool", "tool": content}
+                        return f"data: {json.dumps(data)}\n\n"
+                    return None
+                
+                # Run the agent with streaming
+                response = await Runner.run(
+                    starting_agent=agent,
+                    input=full_query,
+                    context=session_manager.get_session(session_id) if session_id else {},
+                    max_turns=5
+                )
+                
+                # Extract content from response
+                if hasattr(response, 'messages') and response.messages:
+                    for message in response.messages:
+                        if hasattr(message, 'content') and message.content:
+                            chunk = message.content
+                            full_response += chunk
+                            yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
+                            
+                            # Small delay for smooth streaming
+                            await asyncio.sleep(0.01)
+                
+                # Save to conversation history if available
+                if conversation_manager and session_id and full_response:
+                    try:
+                        conversation_manager.add_entry(
+                            session_id=session_id,
+                            query=request.query,
+                            response=full_response,
+                            model=request.model,
+                            metadata={
+                                "tools_called": tools_called,
+                                "thinking_steps": thinking_steps
+                            }
+                        )
+                        logger.info(f"Saved conversation to history for session {session_id}")
+                    except Exception as e:
+                        logger.warning(f"Could not save conversation history: {e}")
+                
+                # Send intelligence data if requested
+                if request.includeIntelligence:
+                    execution_time = asyncio.get_event_loop().time() - start_time
+                    intelligence_data = {
+                        "type": "intelligence",
+                        "content": {
+                            "executionTime": int(execution_time * 1000),
+                            "tokensUsed": len(full_response.split()) * 2,  # Rough estimate
+                            "modelsUsed": [
+                                {
+                                    "name": request.model,
+                                    "purpose": "Primary analysis and response generation",
+                                    "tokensUsed": len(full_response.split()) * 2
+                                }
+                            ],
+                            "toolsCalled": tools_called,
+                            "thinkingSteps": thinking_steps
+                        }
+                    }
+                    yield f"data: {json.dumps(intelligence_data)}\n\n"
+                
+                # Session is already saved in conversation_manager above
+                
+                # Send completion signal
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                
+            except Exception as e:
+                logger.error(f"Error during agent execution: {e}", exc_info=True)
+                error_data = {"type": "error", "error": str(e)}
+                yield f"data: {json.dumps(error_data)}\n\n"
+        
+        return StreamingResponse(generate(), media_type="text/event-stream")
+        
+    except Exception as e:
+        logger.error(f"Research endpoint error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/session/{session_id}/history")
+async def get_session_history(session_id: str):
+    """Get conversation history for a session."""
+    if not conversation_manager:
+        return {"history": [], "summary": {}}
+    
+    try:
+        history = conversation_manager.get_history(session_id)
+        summary = conversation_manager.get_session_summary(session_id)
         
         return {
-            "status": "healthy",
-            "message": "Research agent API is running",
-            "tools": {
-                "count": tool_count,
-                "names": tool_names[:5]  # Show first 5 tools
-            },
-            "features": {
-                "reasoning_support": True,
-                "reasoning_compatible_models": reasoning_compatible_models
-            }
+            "history": [entry.to_dict() for entry in history],
+            "summary": summary
         }
     except Exception as e:
-        return {
-            "status": "error",
-            "message": str(e)
+        logger.error(f"Error getting session history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/session/{session_id}")
+async def clear_session(session_id: str):
+    """Clear conversation history for a session."""
+    if not conversation_manager:
+        return {"status": "no memory manager"}
+    
+    try:
+        conversation_manager.clear_session(session_id)
+        return {"status": "cleared"}
+    except Exception as e:
+        logger.error(f"Error clearing session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/")
+async def root():
+    """Root endpoint with system information."""
+    tools_count = 0
+    try:
+        mcp_path = os.getenv("MCP_CONFIG_PATH", "./consulting_brain_apis.mcp")
+        tools = get_enhanced_mcp_tools(mcp_path)
+        tools_count = len(tools)
+    except:
+        pass
+    
+    return {
+        "service": "Kenton Deep Research API",
+        "version": "3.0.0",
+        "status": "running",
+        "tools_available": tools_count,
+        "memory_enabled": conversation_manager is not None,
+        "memory_type": "redis" if conversation_manager and conversation_manager.use_redis else "in-memory",
+        "endpoints": {
+            "health": "/health",
+            "research": "/api/research",
+            "session_history": "/api/session/{session_id}/history",
+            "clear_session": "/api/session/{session_id}"
         }
+    }
 
 if __name__ == "__main__":
-    logger.info("Starting research agent API...")
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    port = int(os.getenv("PORT", 8001))
+    host = os.getenv("HOST", "0.0.0.0")
+    
+    logger.info(f"Starting API server on {host}:{port}")
+    logger.info(f"Memory system: {'Redis' if conversation_manager and conversation_manager.use_redis else 'In-memory'}")
+    logger.info(f"To test: curl http://localhost:{port}/health")
+    
+    uvicorn.run(app, host=host, port=port)

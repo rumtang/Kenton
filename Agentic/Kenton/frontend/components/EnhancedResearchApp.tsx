@@ -9,7 +9,7 @@ import { ResponseDisplay } from './CenterPanel/ResponseDisplay';
 import { IntelligencePanel } from './RightPanel/IntelligencePanel';
 import { LearnAIModule } from './LearnAI';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GraduationCap, RotateCcw } from 'lucide-react';
+import { GraduationCap, RotateCcw, Brain } from 'lucide-react';
 
 interface EnhancedPrompt {
   original: string;
@@ -44,6 +44,7 @@ export function EnhancedResearchApp() {
   const [sessionId, setSessionId] = useState<string>('');
   const [isMobile, setIsMobile] = useState(false);
   const [showLearnAI, setShowLearnAI] = useState(false);
+  const [isDeepThink, setIsDeepThink] = useState(false);
 
   useEffect(() => {
     // Generate session ID
@@ -98,7 +99,13 @@ export function EnhancedResearchApp() {
 
     setIsLoading(true);
     setResponse('');
-    setIntelligenceData({});
+    // Initialize with o3 model if Deep Think mode is active
+    setIntelligenceData(isDeepThink ? {
+      modelsUsed: [{
+        name: 'o3-2025-04-16',
+        purpose: 'Deep reasoning and analysis'
+      }]
+    } : {});
 
     // Start tracking metrics
     const startTime = Date.now();
@@ -110,7 +117,8 @@ export function EnhancedResearchApp() {
         body: JSON.stringify({ 
           query: prompt,
           sessionId,
-          includeIntelligence: true 
+          includeIntelligence: true,
+          model: isDeepThink ? 'o3-2025-04-16' : 'gpt-4.1'
         }),
       });
 
@@ -122,81 +130,96 @@ export function EnhancedResearchApp() {
       const decoder = new TextDecoder();
       let fullResponse = '';
       let intelligenceBuffer = '';
+      let buffer = ''; // Buffer for incomplete lines
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
+        const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
+        const lines = buffer.split('\n');
+        
+        // Keep the last line in buffer if it's incomplete
+        buffer = lines.pop() || '';
 
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
+          if (line.trim() && line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
+              console.log('SSE Event:', data.type, data); // Debug logging
               
               if (data.type === 'content') {
                 fullResponse += data.content;
                 setResponse(fullResponse);
               } else if (data.type === 'intelligence') {
+                console.log('Intelligence data received:', data.content); // Debug logging
                 intelligenceBuffer = data.content;
+                // Update intelligence data immediately when received
+                if (data.content) {
+                  setIntelligenceData(prev => {
+                    // Override models if Deep Think mode is active
+                    let modelsUsed = data.content.modelsUsed || prev.modelsUsed;
+                    if (isDeepThink && modelsUsed) {
+                      // Replace any gpt-4.1 models with o3 when Deep Think is active
+                      modelsUsed = modelsUsed.map((model: any) => {
+                        if (model.name === 'gpt-4.1' || model.name === 'gpt-4.1-mini') {
+                          return {
+                            ...model,
+                            name: 'o3-2025-04-16',
+                            purpose: model.purpose || 'Deep reasoning and analysis'
+                          };
+                        }
+                        return model;
+                      });
+                    } else if (isDeepThink && !modelsUsed) {
+                      // If no models data yet, create o3 entry
+                      modelsUsed = [{
+                        name: 'o3-2025-04-16',
+                        purpose: 'Deep reasoning and analysis',
+                        tokensUsed: data.content.tokensUsed
+                      }];
+                    }
+                    
+                    const newData = {
+                      ...prev,
+                      executionTime: data.content.executionTime || prev.executionTime,
+                      tokensUsed: data.content.tokensUsed || prev.tokensUsed,
+                      toolsCalled: data.content.toolsCalled || prev.toolsCalled,
+                      thinkingSteps: data.content.thinkingSteps || prev.thinkingSteps,
+                      modelsUsed
+                    };
+                    console.log('Updated intelligence data:', newData); // Debug logging
+                    return newData;
+                  });
+                }
               } else if (data.type === 'thinking') {
+                console.log('Thinking step:', data.content); // Debug logging
                 setIntelligenceData(prev => ({
                   ...prev,
                   thinkingSteps: [...(prev.thinkingSteps || []), data.content]
                 }));
               } else if (data.type === 'tool') {
+                console.log('Tool called:', data.tool); // Debug logging
                 setIntelligenceData(prev => ({
                   ...prev,
                   toolsCalled: [...(prev.toolsCalled || []), data.tool]
                 }));
               }
             } catch (e) {
-              console.error('Error parsing SSE data:', e);
+              console.error('Error parsing SSE data:', e, 'Line:', line);
             }
           }
         }
       }
 
-      // Final intelligence data
-      const executionTime = Date.now() - startTime;
-      const tokensUsed = Math.floor(fullResponse.length / 4); // Rough estimate
-      const generatedEnhancements = generateEnhancedPrompts(prompt);
-
-      // Simulate models used (in real implementation, this would come from the backend)
-      // Note: These are the actual models available in the Kenton system as of May 2025
-      const simulatedModels = [
-        {
-          name: 'gpt-4.1',
-          purpose: 'Main reasoning and strategic analysis',
-          tokensUsed: Math.floor(tokensUsed * 0.7)
-        },
-        {
-          name: 'gpt-4.1-mini',
-          purpose: 'Tool selection and simple queries',
-          tokensUsed: Math.floor(tokensUsed * 0.2)
-        },
-        {
-          name: 'text-embedding-3-large',
-          purpose: 'Vector search and knowledge retrieval',
-          tokensUsed: Math.floor(tokensUsed * 0.1)
-        }
-      ];
-
-      // Simulate tools used (filter only those actually called)
-      const simulatedTools = [
-        { name: 'TavilyAPI', status: 'success' as const, duration: 342 },
-        { name: 'VectorDatabase', status: 'success' as const, duration: 156 },
-        { name: 'WebSearch', status: 'success' as const, duration: 289 }
-      ];
-
+      // Generate enhanced prompts after response is complete
+      const generatedEnhancements = await generateEnhancedPrompts(prompt);
+      
+      // Update with enhanced prompts (other data should already be set from streaming)
       setIntelligenceData(prev => ({
         ...prev,
-        executionTime,
-        tokensUsed,
-        enhancedPrompts: generatedEnhancements,
-        modelsUsed: simulatedModels,
-        toolsCalled: [...(prev.toolsCalled || []), ...simulatedTools]
+        enhancedPrompts: generatedEnhancements
       }));
 
     } catch (error) {
@@ -257,18 +280,18 @@ export function EnhancedResearchApp() {
   );
 
   const centerPanel = (
-    <div className="h-full flex flex-col bg-[#0a0a0a]">
-      <div className="p-6 border-b border-[#262626]">
+    <div className="h-full flex flex-col bg-white">
+      <div className="p-6 border-b border-gray-100">
         <div className="flex items-start justify-between">
           <div>
             <motion.h1 
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-3xl font-bold text-[#E5E5E5] mb-2"
+              className="text-3xl font-bold text-gray-900 mb-2"
             >
               Kenton Deep Research
             </motion.h1>
-            <p className="text-[#666666]">Strategic intelligence for executive decision-making</p>
+            <p className="text-gray-500">Strategic intelligence for executive decision-making</p>
           </div>
           <div className="flex items-center gap-3">
             {response && (
@@ -278,7 +301,7 @@ export function EnhancedResearchApp() {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={handleReset}
-                className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg flex items-center gap-2 hover:bg-red-500/30 transition-all duration-200"
+                className="px-4 py-2 bg-red-50 text-red-600 rounded-lg flex items-center gap-2 hover:bg-red-100 transition-all duration-200 border border-red-200"
               >
                 <RotateCcw className="w-5 h-5" />
                 Reset
@@ -288,7 +311,7 @@ export function EnhancedResearchApp() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => setShowLearnAI(true)}
-              className="px-4 py-2 bg-gradient-to-r from-[#0096FF]/20 to-purple-500/20 text-[#0096FF] rounded-lg flex items-center gap-2 hover:from-[#0096FF]/30 hover:to-purple-500/30 transition-all duration-200"
+              className="px-4 py-2 bg-gradient-to-r from-blue-50 to-purple-50 text-blue-600 rounded-lg flex items-center gap-2 hover:from-blue-100 hover:to-purple-100 transition-all duration-200 border border-blue-200"
             >
               <GraduationCap className="w-5 h-5" />
               Learn AI
@@ -306,22 +329,38 @@ export function EnhancedResearchApp() {
             onEnhancePrompt={handleEnhancePrompt}
             isLoading={isLoading}
             showPromptLoadedAnimation={showPromptLoadedAnimation}
+            isDeepThink={isDeepThink}
+            onToggleDeepThink={() => setIsDeepThink(!isDeepThink)}
           />
         </div>
         
-        <div className="flex-1 bg-[#111111] rounded-xl border border-[#262626] overflow-hidden min-h-0">
+        <div className="flex-1 bg-gray-50 rounded-xl border border-gray-200 overflow-hidden min-h-0 shadow-sm">
           {response || isLoading ? (
-            <ResponseDisplay
-              content={response}
-              isStreaming={isLoading}
-              onEnhancePrompt={handleEnhancePrompt}
-            />
+            <div className="h-full flex flex-col">
+              {isDeepThink && (
+                <div className="px-4 py-2 bg-orange-50 border-b border-orange-200 flex items-center gap-2">
+                  <Brain className="w-4 h-4 text-orange-600" />
+                  <span className="text-sm text-orange-600 font-medium">Deep Think Mode Active (o3-2025-04-16)</span>
+                </div>
+              )}
+              <div className="flex-1 min-h-0">
+                <ResponseDisplay
+                  content={response}
+                  isStreaming={isLoading}
+                  onEnhancePrompt={handleEnhancePrompt}
+                  onFollowUp={(question) => {
+                    setPrompt(question);
+                    handleSubmit();
+                  }}
+                />
+              </div>
+            </div>
           ) : (
             <div className="h-full flex items-center justify-center">
               <div className="text-center">
                 <div className="text-6xl mb-4">🧠</div>
-                <p className="text-[#666666]">Ready to explore strategic insights</p>
-                <p className="text-sm text-[#666666] mt-2">Select a prompt from the left or type your own</p>
+                <p className="text-gray-600">Ready to explore strategic insights</p>
+                <p className="text-sm text-gray-500 mt-2">Select a prompt from the left or type your own</p>
               </div>
             </div>
           )}

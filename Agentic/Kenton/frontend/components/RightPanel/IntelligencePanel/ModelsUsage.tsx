@@ -23,12 +23,12 @@ export function ModelsUsage({ models }: Props) {
   };
 
   const getModelColor = (name: string) => {
-    if (name.includes('gpt-4.1') && !name.includes('mini')) return 'text-purple-500 border-purple-500/20 bg-purple-500/10';
-    if (name.includes('gpt-4.1-mini')) return 'text-blue-500 border-blue-500/20 bg-blue-500/10';
-    if (name.includes('gpt-4o')) return 'text-emerald-500 border-emerald-500/20 bg-emerald-500/10';
-    if (name.includes('o1') || name.includes('o3')) return 'text-green-500 border-green-500/20 bg-green-500/10';
-    if (name.includes('embedding')) return 'text-yellow-500 border-yellow-500/20 bg-yellow-500/10';
-    return 'text-gray-500 border-gray-500/20 bg-gray-500/10';
+    if (name.includes('gpt-4.1') && !name.includes('mini')) return 'text-purple-600 border-purple-200 bg-purple-50';
+    if (name.includes('gpt-4.1-mini')) return 'text-blue-600 border-blue-200 bg-blue-50';
+    if (name.includes('gpt-4o')) return 'text-emerald-600 border-emerald-200 bg-emerald-50';
+    if (name.includes('o1') || name.includes('o3')) return 'text-green-600 border-green-200 bg-green-50';
+    if (name.includes('embedding')) return 'text-yellow-600 border-yellow-200 bg-yellow-50';
+    return 'text-gray-600 border-gray-200 bg-gray-50';
   };
 
   const totalTokens = models.reduce((sum, model) => sum + (model.tokensUsed || 0), 0);
@@ -47,12 +47,12 @@ export function ModelsUsage({ models }: Props) {
             <div className="flex items-start gap-3">
               <span className="text-2xl mt-0.5">{getModelIcon(model.name)}</span>
               <div>
-                <p className="font-medium text-[#E5E5E5]">{model.name}</p>
-                <p className="text-sm text-[#A3A3A3] mt-1">{model.purpose}</p>
-                {model.tokensUsed && (
+                <p className="font-medium text-gray-900">{model.name}</p>
+                <p className="text-sm text-gray-600 mt-1">{model.purpose}</p>
+                {model.tokensUsed !== undefined && model.tokensUsed > 0 && (
                   <div className="flex items-center gap-2 mt-2">
-                    <Zap className="w-3 h-3 text-[#666666]" />
-                    <span className="text-xs text-[#666666]">
+                    <Zap className="w-3 h-3 text-gray-500" />
+                    <span className="text-xs text-gray-500">
                       {model.tokensUsed.toLocaleString()} tokens
                     </span>
                   </div>
@@ -64,13 +64,13 @@ export function ModelsUsage({ models }: Props) {
       ))}
       
       {totalTokens > 0 && (
-        <div className="mt-4 p-3 bg-[#111111] rounded-lg border border-[#262626]">
+        <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-[#666666]">Total Tokens Used</span>
-            <span className="text-sm font-mono text-[#E5E5E5]">{totalTokens.toLocaleString()}</span>
+            <span className="text-xs text-gray-500">Total Tokens Used</span>
+            <span className="text-sm font-mono text-gray-900">{totalTokens.toLocaleString()}</span>
           </div>
           <div className="flex items-center justify-between mt-1">
-            <span className="text-xs text-[#666666]">Estimated Cost</span>
+            <span className="text-xs text-gray-500">Estimated Cost</span>
             <span className="text-sm font-mono text-green-400">
               ${(totalTokens * 0.00002).toFixed(4)}
             </span>
